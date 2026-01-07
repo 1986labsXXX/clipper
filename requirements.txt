@@ -1,9 +1,9 @@
 streamlit
+yt-dlp
 moviepy<2.0
 groq
 edge-tts
 asyncio
-yt-dlp
-numpy
+numpy<2.0.0
 Pillow
-imageio==2.4.1
+imageio-ffmpeg
