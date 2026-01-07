@@ -5,96 +5,119 @@ import os
 import time
 
 # --- SETUP HALAMAN ---
-st.set_page_config(page_title="YT Clipper Gratis", page_icon="✂️", layout="centered")
+st.set_page_config(page_title="YT Clipper Pro", page_icon="✂️", layout="centered")
 
 st.markdown("""
 <style>
     .stApp { background-color: #0E1117; color: #FAFAFA; }
     h1 { color: #FF4B4B; text-align: center; }
     .stButton>button { width: 100%; background-color: #FF4B4B; color: white; font-weight: bold; }
+    .stSuccess { background-color: #1b5e20; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("✂️ YT CLIPPER PRO (FREE)")
-st.caption("Download & Potong Video Youtube Tanpa Watermark")
+st.title("✂️ YT CLIPPER PRO")
+st.caption("Solusi Download Video YouTube yang Kena Blokir 403")
+
+# --- SIDEBAR: KUNCI RAHASIA (COOKIES) ---
+with st.sidebar:
+    st.header("🔐 Kunci Anti-Blokir")
+    st.info("YouTube sering memblokir server cloud (Error 403). Solusinya: Upload Cookies asli dari browser kamu.")
+    uploaded_cookie = st.file_uploader("Upload file 'cookies.txt' di sini:", type=["txt"])
 
 # --- FUNGSI DOWNLOADER ---
-@st.cache_resource(show_spinner=False)
-def download_video(url):
+def download_video(url, cookie_path=None):
     # Buat folder temp
     if not os.path.exists("downloads"):
         os.makedirs("downloads")
     
-    # Settingan yt-dlp (Ambil format MP4 terbaik yang ringan / max 720p biar server kuat)
+    # Settingan yt-dlp dengan User Agent & Cookies
     ydl_opts = {
         'format': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': 'downloads/%(id)s.%(ext)s',
         'quiet': True,
         'no_warnings': True,
+        # NIPU YOUTUBE BIAR DIKIRA BROWSER ASLI:
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'referer': 'https://www.youtube.com/',
     }
     
+    # Jika ada cookies, pasang!
+    if cookie_path:
+        ydl_opts['cookiefile'] = cookie_path
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = ydl.prepare_filename(info)
         return filename, info['title'], info['duration']
 
-# --- UI INPUT ---
-url = st.text_input("🔗 Tempel Link YouTube di sini:", placeholder="https://youtube.com/watch?v=...")
+# --- UI UTAMA ---
+url = st.text_input("🔗 Tempel Link YouTube:", placeholder="https://youtube.com/watch?v=...")
 
 if url:
+    # Cek Cookie dulu
+    cookie_temp_path = None
+    if uploaded_cookie is not None:
+        cookie_temp_path = "temp_cookies.txt"
+        with open(cookie_temp_path, "wb") as f:
+            f.write(uploaded_cookie.getbuffer())
+        st.toast("🍪 Cookies berhasil dimuat! Mencoba menembus YouTube...", icon="🔓")
+    
     try:
-        with st.spinner("⏳ Sedang menyedot video dari YouTube... (Tunggu ya)"):
-            file_path, title, duration = download_video(url)
+        with st.spinner("⏳ Sedang download video (Bismillah tembus)..."):
+            # Panggil fungsi download dengan atau tanpa cookie
+            file_path, title, duration = download_video(url, cookie_temp_path)
         
-        st.success(f"✅ Video Terambil: **{title}**")
-        
-        # --- PREVIEW VIDEO ASLI ---
-        # st.video(file_path) # Opsional: Dimatikan biar hemat kuota server, nyalakan kalau perlu
+        st.success(f"✅ SUKSES: **{title}**")
         
         st.markdown("---")
-        st.markdown("### ✂️ Pilih Bagian yang Mau Dipotong")
+        st.markdown("### ✂️ Editor Pemotong")
         
-        # SLIDER PEMOTONG
-        # Konversi durasi ke menit:detik buat display
+        # SLIDER (Batas max 300 detik biar gak crash servernya)
+        max_preview = min(duration, 300) 
+        
         start_time, end_time = st.slider(
-            "Geser untuk memilih rentang waktu (Detik):",
-            0, duration, (0, min(duration, 60)) # Default 60 detik pertama
+            "Pilih Durasi Potong (Detik):",
+            0, duration, (0, 30) 
         )
         
-        st.info(f"⏱️ Durasi Klip: **{end_time - start_time} detik** (Dari detik ke-{start_time} sampai {end_time})")
+        durasi_klip = end_time - start_time
+        st.info(f"⏱️ Durasi Klip: **{durasi_klip} detik**")
 
-        # --- TOMBOL EKSEKUSI ---
-        if st.button("✂️ POTONG & DOWNLOAD KLIP"):
+        if st.button("✂️ POTONG SEKARANG"):
             output_filename = f"clip_{int(time.time())}.mp4"
             
-            with st.spinner("🔪 Sedang menggunting video..."):
+            with st.spinner("🔪 Sedang menggunting..."):
                 try:
-                    # Proses Potong Pakai MoviePy
                     with VideoFileClip(file_path) as video:
                         new_clip = video.subclipped(start_time, end_time)
-                        new_clip.write_videofile(output_filename, codec="libx264", audio_codec="aac", temp_audiofile='temp-audio.m4a', remove_temp=True, logger=None)
+                        # Preset ultrafast biar server gak berat
+                        new_clip.write_videofile(output_filename, codec="libx264", audio_codec="aac", preset="ultrafast", temp_audiofile='temp-audio.m4a', remove_temp=True, logger=None)
                     
-                    # Tampilkan Hasil
-                    st.success("✨ Selesai! Silakan download di bawah.")
-                    st.video(output_filename)
+                    st.success("✨ Video Siap!")
                     
-                    # Tombol Download
                     with open(output_filename, "rb") as file:
-                        btn = st.download_button(
-                            label="⬇️ DOWNLOAD MP4",
+                        st.download_button(
+                            label="⬇️ DOWNLOAD HASILNYA",
                             data=file,
                             file_name=f"Klip_{title[:10]}.mp4",
                             mime="video/mp4"
                         )
                     
-                    # Bersih-bersih file temp (Opsional)
-                    # os.remove(output_filename) 
-                    
+                    # Cleanup
+                    if os.path.exists(output_filename):
+                        os.remove(output_filename)
+                        
                 except Exception as e:
                     st.error(f"Gagal memotong: {e}")
                     
     except Exception as e:
-        st.error(f"Error Download: {e}. Pastikan link valid atau video tidak diprivate.")
+        if "403" in str(e):
+            st.error("🛑 MASIH DIBLOKIR YOUTUBE (403).")
+            st.warning("👉 Solusi: Kamu WAJIB upload file 'cookies.txt' di menu sebelah kiri agar YouTube mengenali kamu sebagai manusia.")
+        else:
+            st.error(f"Error Lain: {e}")
 
-st.markdown("---")
-st.caption("⚠️ Catatan: Maksimal resolusi diset ke 720p agar server gratisan tidak meledak.")
+    # Hapus cookie temp setelah pakai biar aman
+    if cookie_temp_path and os.path.exists(cookie_temp_path):
+        os.remove(cookie_temp_path)
