@@ -19,26 +19,29 @@ if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 
 # --- SETUP HALAMAN ---
-st.set_page_config(page_title="AI Clipper V3 (Stabil 4 Klip)", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="AI Clipper V4 (Mixtral Stabil)", page_icon="🛡️", layout="wide")
 
 st.markdown("""
 <style>
     .stApp { background-color: #121212; color: #E0E0E0; }
-    h1 { color: #00E676; text-align: center; text-shadow: 0 0 10px #00E676; }
-    .stButton>button { width: 100%; background-color: #00E676; color: black; font-weight: bold; border-radius: 8px; }
+    h1 { color: #00E5FF; text-align: center; text-shadow: 0 0 10px #00E5FF; }
+    .stButton>button { width: 100%; background-color: #00E5FF; color: black; font-weight: bold; border-radius: 8px; }
     .clip-box { background-color: #1E1E1E; padding: 20px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #333; }
-    .highlight { color: #00E676; font-weight: bold; }
+    .highlight { color: #00E5FF; font-weight: bold; }
+    .error-box { background-color: #B00020; color: white; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚡ AI CLIPPER V3 (TARGET 4 KLIP)")
-st.caption("Versi Stabil: Target 4 Video Pilihan + Subtitle Rapi")
+st.title("🛡️ AI CLIPPER V4 (STABIL)")
+st.caption("Otak Baru (Mixtral) + Deteksi Error Lengkap")
 
 # --- KONFIGURASI ---
 api_key = "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" 
 
 if 'data' not in st.session_state:
     st.session_state.data = {}
+if 'debug_msg' not in st.session_state:
+    st.session_state.debug_msg = ""
 
 with st.sidebar:
     st.header("⚙️ Konfigurasi")
@@ -75,10 +78,10 @@ def get_transcript_with_timestamps(url, cookie_path=None):
         chunk_start = 0
         current_chunk = []
         
+        # Chunk 30s
         for caption in captions:
             start_seconds = caption.start_in_seconds
             text = caption.text.replace('\n', ' ').strip()
-            # Chunk 30 detik biar AI punya konteks cukup
             if start_seconds - chunk_start < 30: 
                 current_chunk.append(text)
             else:
@@ -93,43 +96,54 @@ def get_transcript_with_timestamps(url, cookie_path=None):
         print(f"Error VTT: {e}")
         return None, None
 
-# --- FUNGSI 2: ANALISA AI (TARGET 4 KLIP - BIAR GAK OVERLOAD) ---
+# --- FUNGSI 2: ANALISA AI (MIXTRAL + ROBUST PARSER) ---
 def analyze_virality(transcript_text, api_key):
     client = Groq(api_key=api_key)
-    # Kita potong teks sedikit biar token aman
-    truncated_text = transcript_text[:32000] 
+    # Potong teks max 25k char biar aman di Mixtral
+    truncated_text = transcript_text[:25000] 
     
     prompt = """
-    Kamu adalah Video Editor.
-    Tugas: Cari 4 (EMPAT) bagian paling menarik untuk dijadikan Shorts.
+    Kamu adalah Video Editor Profesional.
+    Tugas: Temukan 4 (EMPAT) momen paling menarik dari transkrip video ini untuk dijadikan YouTube Shorts.
     
-    ATURAN WAJIB:
-    1. GUNAKAN TIMESTAMP DARI TEKS YANG DISEDIAKAN.
-    2. Target durasi: 60 - 90 detik per klip.
-    3. HARUS MENGHASILKAN 4 KLIP.
+    INSTRUKSI TEKNIS:
+    1. Output HARUS format JSON murni. Jangan ada teks pembuka/penutup.
+    2. Gunakan timestamp yang ada di transkrip.
+    3. Durasi tiap klip idealnya 60-90 detik.
     
-    Output JSON MURNI:
+    Contoh Output:
     [
-        {"start": 60, "end": 140, "title": "Judul 1", "reason": "Alasan"},
-        {"start": 200, "end": 280, "title": "Judul 2", "reason": "Alasan"},
-        {"start": 300, "end": 380, "title": "Judul 3", "reason": "Alasan"},
-        {"start": 400, "end": 480, "title": "Judul 4", "reason": "Alasan"}
+        {"start": 60, "end": 120, "title": "Topik A", "reason": "Lucu"},
+        {"start": 200, "end": 290, "title": "Topik B", "reason": "Seru"}
     ]
+
     TRANSKRIP:
     """ + truncated_text
     
     try:
         completion = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model="llama-3.3-70b-versatile",
-            temperature=0.3 # Sedikit lebih rendah biar stabil dan gak halu
+            # GANTI MODEL KE MIXTRAL (Lebih patuh JSON)
+            model="mixtral-8x7b-32768",
+            temperature=0.2 # Rendah biar konsisten
         )
         content = completion.choices[0].message.content
+        
+        # Debugging: Simpan raw content kalau error
+        st.session_state.last_raw_ai = content
+        
+        # Regex Cleaner
         match = re.search(r'\[.*\]', content, re.DOTALL)
-        if match: return json.loads(match.group(0))
-        else: raise ValueError("JSON Error")
-    except:
-        return [{"start": 0, "end": 60, "title": "⚠️ AI Gagal - Mode Manual", "reason": "Silakan geser manual"}]
+        if match:
+            clean_json = match.group(0)
+            return json.loads(clean_json)
+        else:
+            raise ValueError(f"Format JSON tidak ditemukan. Output AI: {content[:100]}...")
+            
+    except Exception as e:
+        # Kirim pesan error asli ke UI
+        error_detail = str(e)
+        return [{"start": 0, "end": 60, "title": "⚠️ ERROR AI", "reason": f"Detail: {error_detail}"}]
 
 # --- FUNGSI 3: DOWNLOAD VIDEO ---
 def download_video(url, cookie_path=None):
@@ -144,7 +158,7 @@ def download_video(url, cookie_path=None):
         info = ydl.extract_info(url, download=True)
         return ydl.prepare_filename(info), info['title']
 
-# --- FUNGSI 4: GENERATOR SUBTITLE (AUTO-WRAP & RAPI) ---
+# --- FUNGSI 4: GENERATOR SUBTITLE (AUTO-WRAP) ---
 def pil_text_generator_wrapped(txt):
     video_width = 720
     font_size = 42
@@ -187,7 +201,7 @@ def pil_text_generator_wrapped(txt):
             for adj_y in range(-stroke_width, stroke_width+1):
                  draw.text((x_text+adj_x, y_text+adj_y), line, font=font, fill="black")
         
-        draw.text((x_text, y_text), line, font=font, fill="#FFD700")
+        draw.text((x_text, y_text), line, font=font, fill="#FFD700") # Emas
         y_text += line_height
         
     return ImageClip(np.array(img))
@@ -240,7 +254,7 @@ def process_clip_with_subs(video_path, vtt_path, start, end, output_name):
 # --- UI UTAMA ---
 url = st.text_input("🔗 Link YouTube:", placeholder="https://youtube.com/watch?v=...")
 
-if st.button("🚀 SCAN (TARGET 4 KLIP)"):
+if st.button("🚀 SCAN (MODE MIXTRAL)"):
     if not url:
         st.error("⚠️ Link kosong!")
     else:
@@ -248,17 +262,17 @@ if st.button("🚀 SCAN (TARGET 4 KLIP)"):
         if uploaded_cookie:
             with open(cookie_path, "wb") as f: f.write(uploaded_cookie.getbuffer())
 
-        with st.status("🕵️ Mencari 4 Klip Terbaik...", expanded=True) as status:
+        with st.status("🕵️ Menjalankan Analisa...", expanded=True) as status:
             status.write("📑 Download Subtitle...")
             transcript_text, vtt_path = get_transcript_with_timestamps(url, cookie_path)
             
             if not transcript_text:
-                status.error("❌ Gagal. Video tidak punya CC.")
+                status.error("❌ Gagal. Video tidak punya CC/Transkrip.")
                 st.stop()
             
             st.session_state.data['vtt_path'] = vtt_path
             
-            status.write("🧠 AI Menganalisa...")
+            status.write("🧠 AI (Mixtral) Berpikir...")
             st.session_state.data['moments'] = analyze_virality(transcript_text, api_key)
             
             status.write("⬇️ Download Video...")
@@ -270,7 +284,7 @@ if st.button("🚀 SCAN (TARGET 4 KLIP)"):
                 status.error(f"❌ Error Download: {e}")
                 st.stop()
                 
-            status.update(label=f"✅ SIAP! Ditemukan {len(st.session_state.data['moments'])} Klip.", state="complete", expanded=False)
+            status.update(label="✅ Selesai!", state="complete", expanded=False)
 
 if 'moments' in st.session_state.data:
     st.markdown("---")
@@ -280,6 +294,16 @@ if 'moments' in st.session_state.data:
     v_path = st.session_state.data['video_path']
     vtt_path = st.session_state.data.get('vtt_path')
     
+    # CEK ERROR DARI AI
+    if len(moments) == 1 and "ERROR AI" in moments[0]['title']:
+        st.markdown(f"""
+        <div class='error-box'>
+            <h3>⚠️ AI GAGAL</h3>
+            <p>{moments[0]['reason']}</p>
+            <p>Saran: Coba video lain yang durasinya lebih pendek, atau coba refresh halaman.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
     for i, moment in enumerate(moments):
         col1, col2 = st.columns([3, 1])
         with col1:
