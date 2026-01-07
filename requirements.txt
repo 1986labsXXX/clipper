@@ -1,3 +1,5 @@
 streamlit
 yt-dlp
 moviepy
+groq
+youtube-transcript-api
