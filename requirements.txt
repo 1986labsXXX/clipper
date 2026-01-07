@@ -1,9 +1,6 @@
 streamlit
 yt-dlp
-moviepy==1.0.3
+moviepy<2.0
 groq
 webvtt-py
-Pillow==9.5.0
-numpy<2.0.0
-imageio==2.4.1
-imageio-ffmpeg==0.4.7
+numpy
