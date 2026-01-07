@@ -18,21 +18,21 @@ if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 
 # --- SETUP HALAMAN ---
-st.set_page_config(page_title="AI Clipper V8 (Word Pop-up)", page_icon="💥", layout="wide")
+st.set_page_config(page_title="AI Clipper V9 (Fix Model)", page_icon="🚀", layout="wide")
 
 st.markdown("""
 <style>
     .stApp { background-color: #121212; color: #E0E0E0; }
-    h1 { color: #FFEB3B; text-align: center; text-shadow: 0 0 10px #FBC02D; }
-    .stButton>button { width: 100%; background-color: #FBC02D; color: black; font-weight: bold; border-radius: 8px; }
+    h1 { color: #00B0FF; text-align: center; text-shadow: 0 0 10px #00B0FF; }
+    .stButton>button { width: 100%; background-color: #00B0FF; color: white; font-weight: bold; border-radius: 8px; }
     .clip-box { background-color: #1E1E1E; padding: 20px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #333; }
     .error-box { background-color: #CF6679; color: black; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
-    .highlight { color: #FFEB3B; font-weight: bold; }
+    .highlight { color: #00B0FF; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("💥 AI CLIPPER V8 (WORD BY WORD)")
-st.caption("Subtitle Muncul Per Kata (Pop-up Style) untuk Retensi Penonton Tinggi.")
+st.title("🚀 AI CLIPPER V9 (Llama 3.1 Instant)")
+st.caption("Fix Error: Menggunakan Model Terbaru 'Llama-3.1-8b-Instant'. Subtitle Pop-up Aktif.")
 
 # --- KONFIGURASI ---
 DEFAULT_API_KEY = "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" 
@@ -43,8 +43,8 @@ if 'data' not in st.session_state:
 # --- SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Konfigurasi")
-    st.subheader("🔑 API Key (Opsional)")
-    custom_key = st.text_input("Paste Key Baru", type="password")
+    st.subheader("🔑 API Key")
+    custom_key = st.text_input("Paste Key Baru (Jika Limit Habis)", type="password")
     
     if custom_key:
         active_key = custom_key
@@ -104,10 +104,11 @@ def get_transcript_with_timestamps(url, cookie_path=None):
         print(f"Error VTT: {e}")
         return None, None
 
-# --- FUNGSI 2: ANALISA AI (LLAMA 8B) ---
+# --- FUNGSI 2: ANALISA AI (MODEL BARU 3.1) ---
 def analyze_virality(transcript_text, api_key):
     client = Groq(api_key=api_key)
-    truncated_text = transcript_text[:18000] 
+    # Potong teks 15rb karakter (Hemat Kuota)
+    truncated_text = transcript_text[:15000] 
     
     prompt = """
     Kamu adalah Video Editor.
@@ -125,7 +126,8 @@ def analyze_virality(transcript_text, api_key):
     try:
         completion = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model="llama3-8b-8192", 
+            # MODEL BARU YANG AKTIF & CEPAT
+            model="llama-3.1-8b-instant", 
             temperature=0.2,
             response_format={"type": "json_object"}
         )
@@ -155,13 +157,12 @@ def download_video(url, cookie_path=None):
         info = ydl.extract_info(url, download=True)
         return ydl.prepare_filename(info), info['title']
 
-# --- FUNGSI 4: GENERATOR TEKS (BESAR & TENGAH) ---
+# --- FUNGSI 4: GENERATOR TEKS POP-UP (BESAR & TENGAH) ---
 def pil_word_generator(txt):
-    # Settingan Canvas Word-by-Word
     video_width = 720
-    canvas_height = 200 # Area subtitle
-    font_size = 70 # FONT GEDE BIAR JELAS
-    stroke_width = 6 # Stroke tebal biar kebaca
+    canvas_height = 200 
+    font_size = 70 
+    stroke_width = 6
     
     try:
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
@@ -171,7 +172,6 @@ def pil_word_generator(txt):
     img = PIL.Image.new('RGBA', (video_width, canvas_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
-    # Hitung posisi tengah
     bbox = draw.textbbox((0, 0), txt, font=font)
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
@@ -179,17 +179,15 @@ def pil_word_generator(txt):
     x_pos = (video_width - text_w) / 2
     y_pos = (canvas_height - text_h) / 2
     
-    # Gambar Stroke Hitam Tebal
     for adj_x in range(-stroke_width, stroke_width+1):
         for adj_y in range(-stroke_width, stroke_width+1):
              draw.text((x_pos+adj_x, y_pos+adj_y), txt, font=font, fill="black")
     
-    # Gambar Teks Kuning/Emas
-    draw.text((x_pos, y_pos), txt, font=font, fill="#FFEB3B")
+    draw.text((x_pos, y_pos), txt, font=font, fill="#FFEB3B") # Warna Kuning
     
     return ImageClip(np.array(img))
 
-# --- FUNGSI 5: PROCESS VIDEO (LOGIKA WORD-BY-WORD) ---
+# --- FUNGSI 5: PROCESS VIDEO (WORD BY WORD) ---
 def process_clip_with_subs(video_path, vtt_path, start, end, output_name):
     try:
         clip = VideoFileClip(video_path)
@@ -205,47 +203,34 @@ def process_clip_with_subs(video_path, vtt_path, start, end, output_name):
             subclip = subclip.crop(x1=x_center - new_w/2, y1=0, width=new_w, height=h)
         subclip = subclip.resize(newsize=(720, 1280))
         
-        # 1. BACA SUBTITLE ORIGINAL
         captions = webvtt.read(vtt_path)
-        
-        # 2. PECAH JADI KATA PER KATA (ALGORITMA ESTIMASI)
         word_subs_data = []
         
         for c in captions:
-            # Hanya ambil caption yg ada di range waktu klip
             if (c.end_in_seconds > start) and (c.start_in_seconds < end):
-                # Bersihkan teks
                 full_text = re.sub(r'<[^>]+>', '', c.text.replace('\n', ' ')).strip()
                 words = full_text.split()
                 
                 if not words: continue
                 
-                # Hitung durasi total kalimat ini
                 caption_duration = c.end_in_seconds - c.start_in_seconds
-                
-                # Hitung durasi per kata (dibagi rata)
                 time_per_word = caption_duration / len(words)
                 
-                # Loop setiap kata untuk bikin timestamp sendiri
                 current_word_start = c.start_in_seconds
                 
                 for word in words:
                     word_start = max(0, current_word_start - start)
                     word_end = min(end - start, (current_word_start + time_per_word) - start)
                     
-                    # Simpan cuma kalau durasinya valid
                     if word_end > word_start:
-                        # Tampilkan kata dengan HURUF BESAR
                         word_subs_data.append(((word_start, word_end), word.upper()))
                     
                     current_word_start += time_per_word
 
-        # 3. GENERATE SUBTITLE CLIP
         if word_subs_data:
             try:
-                # Pakai generator khusus teks besar
                 subtitles = SubtitlesClip(word_subs_data, pil_word_generator)
-                subtitles = subtitles.set_position(('center', 'center')) # Benar-benar di tengah layar
+                subtitles = subtitles.set_position(('center', 'center')) 
                 final_clip = CompositeVideoClip([subclip, subtitles])
                 msg = "Subtitle Pop-up Siap!"
             except Exception as e:
@@ -264,7 +249,7 @@ def process_clip_with_subs(video_path, vtt_path, start, end, output_name):
 # --- UI UTAMA ---
 url = st.text_input("🔗 Link YouTube:", placeholder="https://youtube.com/watch?v=...")
 
-if st.button("🚀 SCAN (WORD BY WORD)"):
+if st.button("🚀 SCAN (MODE LLAMA 3.1)"):
     if not url:
         st.error("⚠️ Link kosong!")
     else:
@@ -272,7 +257,7 @@ if st.button("🚀 SCAN (WORD BY WORD)"):
         if uploaded_cookie:
             with open(cookie_path, "wb") as f: f.write(uploaded_cookie.getbuffer())
 
-        with st.status("🕵️ Memproses Video...", expanded=True) as status:
+        with st.status("🕵️ Memproses (Model Baru)...", expanded=True) as status:
             status.write("📑 Download Subtitle...")
             transcript_text, vtt_path = get_transcript_with_timestamps(url, cookie_path)
             
@@ -307,7 +292,8 @@ if 'moments' in st.session_state.data:
     if len(moments) == 1 and "ERROR" in moments[0]['title']:
          st.markdown(f"""
         <div class='error-box'>
-            <h3>🚨 ERROR: {moments[0]['reason']}</h3>
+            <h3>🚨 ERROR AI: {moments[0]['reason']}</h3>
+            <p>Tips: Gunakan API Key baru jika kena limit, atau coba video lain.</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -331,7 +317,7 @@ if 'moments' in st.session_state.data:
             if st.button(f"✨ RENDER #{i+1}", key=f"bt_{i}"):
                 out_file = f"final_{i}_{int(time.time())}.mp4"
                 
-                with st.spinner("💥 Rendering Word-by-Word..."):
+                with st.spinner("💥 Rendering Pop-up Text..."):
                     success, msg = process_clip_with_subs(v_path, vtt_path, m_start, m_end, out_file)
                     
                     if success:
