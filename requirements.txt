@@ -4,3 +4,4 @@ moviepy<2.0
 groq
 webvtt-py
 numpy
+Pillow
