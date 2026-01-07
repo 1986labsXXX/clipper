@@ -35,7 +35,7 @@ st.title("🦄 AI CLIPPER V5 (LLAMA 3.3)")
 st.caption("Model Baru (Llama 3.3) + JSON Mode (Anti Error Format)")
 
 # --- KONFIGURASI ---
-api_key = "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" 
+api_key = "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" 
 
 if 'data' not in st.session_state:
     st.session_state.data = {}
