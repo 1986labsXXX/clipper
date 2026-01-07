@@ -7,9 +7,16 @@ import time
 import json
 import re
 import glob
+import PIL.Image # <--- TAMBAHAN 1
+
+# --- 🛠️ FIX BUG "ANTIALIAS" (WAJIB ADA) ---
+# Ini trik biar MoviePy jadul bisa jalan di Server Modern
+if not hasattr(PIL.Image, 'ANTIALIAS'):
+    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
+# ---------------------------------------------
 
 # --- SETUP HALAMAN ---
-st.set_page_config(page_title="AI Viral Clipper (Fix Download)", page_icon="💾", layout="wide")
+st.set_page_config(page_title="AI Viral Clipper (Fix Render)", page_icon="💾", layout="wide")
 
 st.markdown("""
 <style>
@@ -20,8 +27,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("💾 AI VIRAL CLIPPER (FIX DOWNLOAD)")
-st.caption("Versi Final: Download Menggunakan RAM (Anti-File Hilang)")
+st.title("💾 AI VIRAL CLIPPER (FIX RENDER)")
+st.caption("Versi Final: Sudah Ditambal Anti-Crash 'ANTIALIAS'")
 
 # --- KONFIGURASI ---
 api_key = "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" # API Key Bos
@@ -123,7 +130,7 @@ def download_video(url, cookie_path=None):
         info = ydl.extract_info(url, download=True)
         return ydl.prepare_filename(info), info['title']
 
-# --- FUNGSI 4: CROP 9:16 (MODIFIKASI DEBUG) ---
+# --- FUNGSI 4: CROP 9:16 ---
 def process_clip(video_path, start, end, output_name):
     try:
         with VideoFileClip(video_path) as clip:
@@ -144,9 +151,9 @@ def process_clip(video_path, start, end, output_name):
                 final_clip = subclip.resize(height=1280)
             
             final_clip.write_videofile(output_name, codec='libx264', audio_codec='aac', preset='ultrafast', logger=None)
-            return True, None # Sukses
+            return True, None
     except Exception as e:
-        return False, str(e) # Gagal & kirim error
+        return False, str(e)
 
 # --- UI UTAMA ---
 url = st.text_input("🔗 Link YouTube:", placeholder="https://youtube.com/watch?v=...")
@@ -201,35 +208,23 @@ if st.session_state.video_path and st.session_state.viral_moments:
                 out_file = f"short_{i}_{int(time.time())}.mp4"
                 
                 with st.spinner("⏳ Rendering... (Tunggu sampai tombol download muncul)"):
-                    # Proses Clip
                     success, error_msg = process_clip(st.session_state.video_path, m_start, m_end, out_file)
                     
                     if success:
                         st.success("✅ Video Siap!")
-                        
-                        # --- TRIK RAHASIA: BACA KE RAM ---
-                        # Kita baca videonya jadi 'Bytes' biar aman disimpan di tombol download
                         try:
                             with open(out_file, "rb") as f:
                                 video_bytes = f.read()
-                            
-                            # Tampilkan Preview
                             st.video(video_bytes)
-                            
-                            # Tampilkan Tombol Download (Pakai data dari RAM)
                             st.download_button(
                                 label="⬇️ DOWNLOAD MP4",
                                 data=video_bytes,
                                 file_name=f"Shorts_{i+1}.mp4",
                                 mime="video/mp4"
                             )
-                            
-                            # Hapus file fisik (Aman karena data udah di RAM tombol)
                             os.remove(out_file)
-                            
                         except Exception as e:
                             st.error(f"Gagal menyiapkan download: {e}")
-                            
                     else:
                         st.error(f"❌ Render Gagal: {error_msg}")
 
