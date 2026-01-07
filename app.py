@@ -1,6 +1,6 @@
 import streamlit as st
 import yt_dlp
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip
 from moviepy.video.tools.subtitles import SubtitlesClip
 from groq import Groq
 import os
@@ -11,26 +11,28 @@ import glob
 import webvtt
 from datetime import timedelta
 import PIL.Image
+from PIL import ImageDraw, ImageFont # Kita pakai "Pensil" Python sendiri
+import numpy as np
 
 # --- 🛠️ FIX BUG MOVIEPY ---
 if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 
 # --- SETUP HALAMAN ---
-st.set_page_config(page_title="AI Clipper Long (60s-90s)", page_icon="⏱️", layout="wide")
+st.set_page_config(page_title="AI Clipper (Final Fix)", page_icon="🛡️", layout="wide")
 
 st.markdown("""
 <style>
     .stApp { background-color: #121212; color: #E0E0E0; }
-    h1 { color: #00E5FF; text-align: center; text-shadow: 0 0 10px #00E5FF; }
-    .stButton>button { width: 100%; background-color: #00E5FF; color: black; font-weight: bold; border-radius: 8px; }
+    h1 { color: #00E676; text-align: center; text-shadow: 0 0 10px #00E676; }
+    .stButton>button { width: 100%; background-color: #00E676; color: black; font-weight: bold; border-radius: 8px; }
     .clip-box { background-color: #1E1E1E; padding: 20px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #333; }
-    .highlight { color: #00E5FF; font-weight: bold; }
+    .highlight { color: #00E676; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⏱️ AI CLIPPER (DURASI 60-90 DETIK)")
-st.caption("Mode Durasi Panjang + Subtitle Kuning")
+st.title("🛡️ AI CLIPPER (BYPASS SECURITY)")
+st.caption("Solusi Final: Menggunakan Pillow (Python) untuk subtitle agar tidak diblokir server.")
 
 # --- KONFIGURASI ---
 api_key = "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" 
@@ -68,7 +70,6 @@ def get_transcript_with_timestamps(url, cookie_path=None):
         
         vtt_path = vtt_files[0]
         
-        # Parsing Text
         transcript_for_ai = ""
         captions = webvtt.read(vtt_path)
         chunk_start = 0
@@ -77,7 +78,6 @@ def get_transcript_with_timestamps(url, cookie_path=None):
         for caption in captions:
             start_seconds = caption.start_in_seconds
             text = caption.text.replace('\n', ' ').strip()
-            # Kita kumpulkan per 15 detik biar AI gampang hitung
             if start_seconds - chunk_start < 15:
                 current_chunk.append(text)
             else:
@@ -86,30 +86,26 @@ def get_transcript_with_timestamps(url, cookie_path=None):
                 if full_text: transcript_for_ai += f"{time_label} {full_text}\n"
                 chunk_start = start_seconds
                 current_chunk = [text]
-                
         return transcript_for_ai, vtt_path
 
     except Exception as e:
         print(f"Error VTT: {e}")
         return None, None
 
-# --- FUNGSI 2: ANALISA AI (SETTINGAN DURASI BARU) ---
+# --- FUNGSI 2: ANALISA AI ---
 def analyze_virality(transcript_text, api_key):
     client = Groq(api_key=api_key)
-    # Kita potong teks sedikit lebih banyak biar AI punya konteks panjang
     truncated_text = transcript_text[:30000]
     
     prompt = """
-    Kamu adalah Video Editor. Tugas: Pilih 3 bagian MENARIK dari transkrip.
-    
-    ATURAN WAJIB (PENTING):
-    1. GUNAKAN TIMESTAMP DARI TEKS. Jangan ngarang!
-    2. DURASI KLIP HARUS ANTARA 60 DETIK SAMPAI 90 DETIK.
-    3. Jangan kurang dari 60 detik! Cari pembahasan yang utuh dan panjang.
+    Kamu adalah Video Editor.
+    ATURAN WAJIB:
+    1. GUNAKAN TIMESTAMP DARI TEKS.
+    2. DURASI KLIP HARUS 60 - 90 DETIK. Jangan kurang!
     
     Output JSON MURNI:
     [
-        {"start": 60, "end": 140, "title": "Judul Pembahasan Panjang", "reason": "Alasan"}
+        {"start": 60, "end": 140, "title": "Judul", "reason": "Alasan"}
     ]
     TRANSKRIP:
     """ + truncated_text
@@ -140,9 +136,47 @@ def download_video(url, cookie_path=None):
         info = ydl.extract_info(url, download=True)
         return ydl.prepare_filename(info), info['title']
 
-# --- FUNGSI 4: GENERATOR SUBTITLE (FONT FIX) ---
-def generator(txt):
-    return TextClip(txt, font='DejaVu-Sans-Bold', fontsize=40, color='yellow', stroke_color='black', stroke_width=2, method='caption', size=(650, None), align='center')
+# --- FUNGSI 4: GENERATOR SUBTITLE MANUAL (BYPASS IMAGEMAGICK) ---
+def pil_text_generator(txt):
+    # 1. Settingan Canvas
+    width = 720  # Lebar video 720p
+    height = 120 # Tinggi area subtitle
+    font_size = 45
+    
+    # Buat gambar transparan
+    img = PIL.Image.new('RGBA', (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    
+    # 2. Cari Font Linux
+    try:
+        # Lokasi standar font di server Linux Debian/Ubuntu
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+    except:
+        # Fallback kalau gak nemu (pasti jelek tapi jalan)
+        font = ImageFont.load_default()
+
+    # 3. Hitung posisi tengah (Center Text)
+    # Karena PIL agak 'manual', kita pakai bbox buat ngukur teks
+    left, top, right, bottom = draw.textbbox((0, 0), txt, font=font)
+    text_w = right - left
+    text_h = bottom - top
+    x_pos = (width - text_w) / 2
+    y_pos = (height - text_h) / 2
+
+    # 4. Gambar Stroke (Garis Tepi Hitam) - Trik Manual
+    stroke_width = 3
+    stroke_color = "black"
+    # Gambar teks hitam digeser-geser dikit buat efek stroke
+    for adj in range(-stroke_width, stroke_width+1):
+        for adj2 in range(-stroke_width, stroke_width+1):
+             draw.text((x_pos+adj, y_pos+adj2), txt, font=font, fill=stroke_color)
+
+    # 5. Gambar Teks Utama (Kuning)
+    draw.text((x_pos, y_pos), txt, font=font, fill="#FFEB3B") # Warna Kuning Mantap
+
+    # 6. Convert jadi MoviePy ImageClip
+    numpy_img = np.array(img)
+    return ImageClip(numpy_img)
 
 # --- FUNGSI 5: PROCESS VIDEO ---
 def process_clip_with_subs(video_path, vtt_path, start, end, output_name):
@@ -172,18 +206,19 @@ def process_clip_with_subs(video_path, vtt_path, start, end, output_name):
                 if local_end > local_start:
                     subs_data.append(((local_start, local_end), c.text.replace('\n', ' ')))
         
-        # Burn Subtitle
+        # Burn Subtitle (PAKAI GENERATOR PIL BARU)
         if subs_data:
             try:
-                subtitles = SubtitlesClip(subs_data, generator)
+                # Panggil fungsi manual kita tadi
+                subtitles = SubtitlesClip(subs_data, pil_text_generator)
                 subtitles = subtitles.set_position(('center', 1050))
                 final_clip = CompositeVideoClip([subclip, subtitles])
-                msg = "Subtitle Aman!"
+                msg = "Subtitle Aman (Mode Bypass)!"
             except Exception as e:
                 msg = f"Tanpa Subtitle (Error: {e})"
                 final_clip = subclip
         else:
-            msg = "Tidak ada percakapan di detik ini."
+            msg = "Tidak ada percakapan."
             final_clip = subclip
 
         final_clip.write_videofile(output_name, codec='libx264', audio_codec='aac', preset='ultrafast', logger=None)
@@ -195,7 +230,7 @@ def process_clip_with_subs(video_path, vtt_path, start, end, output_name):
 # --- UI UTAMA ---
 url = st.text_input("🔗 Link YouTube:", placeholder="https://youtube.com/watch?v=...")
 
-if st.button("🚀 SCAN (MODE DURASI PANJANG)"):
+if st.button("🚀 SCAN VIDEO"):
     if not url:
         st.error("⚠️ Link kosong!")
     else:
@@ -203,7 +238,7 @@ if st.button("🚀 SCAN (MODE DURASI PANJANG)"):
         if uploaded_cookie:
             with open(cookie_path, "wb") as f: f.write(uploaded_cookie.getbuffer())
 
-        with st.status("🕵️ Mencari Topik Panjang...", expanded=True) as status:
+        with st.status("🕵️ Mencari Topik...", expanded=True) as status:
             status.write("📑 Download Subtitle...")
             transcript_text, vtt_path = get_transcript_with_timestamps(url, cookie_path)
             
@@ -213,7 +248,7 @@ if st.button("🚀 SCAN (MODE DURASI PANJANG)"):
             
             st.session_state.data['vtt_path'] = vtt_path
             
-            status.write("🧠 AI Mencari Segmen 60-90 Detik...")
+            status.write("🧠 AI Mencari Momen Viral (60s+)...")
             st.session_state.data['moments'] = analyze_virality(transcript_text, api_key)
             
             status.write("⬇️ Download Video...")
@@ -242,7 +277,7 @@ if 'moments' in st.session_state.data:
             <div class='clip-box'>
                 <h4 class='highlight'>#{i+1} {moment['title']}</h4>
                 <p>{moment['reason']}</p>
-                <p>⏱️ <b>{moment['start']}s - {moment['end']}s</b> (Durasi: {moment['end'] - moment['start']} detik)</p>
+                <p>⏱️ <b>{moment['start']}s - {moment['end']}s</b> (Durasi: {moment['end'] - moment['start']}s)</p>
             </div>
             """, unsafe_allow_html=True)
             
@@ -251,10 +286,10 @@ if 'moments' in st.session_state.data:
             m_start, m_end = st.slider(f"Geser Waktu #{i+1}", 0, d_dur, (int(moment['start']), int(moment['end'])), key=f"sl_{i}")
         
         with col2:
-            if st.button(f"✨ RENDER PANJANG #{i+1}", key=f"bt_{i}"):
+            if st.button(f"✨ RENDER #{i+1}", key=f"bt_{i}"):
                 out_file = f"final_{i}_{int(time.time())}.mp4"
                 
-                with st.spinner("🎨 Rendering Klip Panjang + Subs..."):
+                with st.spinner("🎨 Burning Subtitles (Manual Mode)..."):
                     success, msg = process_clip_with_subs(v_path, vtt_path, m_start, m_end, out_file)
                     
                     if success:
@@ -263,7 +298,7 @@ if 'moments' in st.session_state.data:
                             with open(out_file, "rb") as f:
                                 video_bytes = f.read()
                             st.video(video_bytes)
-                            st.download_button("⬇️ DOWNLOAD", video_bytes, file_name=f"Shorts_Long_{i+1}.mp4", mime="video/mp4")
+                            st.download_button("⬇️ DOWNLOAD", video_bytes, file_name=f"Shorts_{i+1}.mp4", mime="video/mp4")
                             os.remove(out_file)
                         except: pass
                     else:
