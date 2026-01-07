@@ -20,16 +20,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🎬 AI VIRAL CLIPPER (ANTI-ERROR)")
-st.caption("Solusi Stabil: Auto-Filter Omongan AI & Sedot Subtitle Bandel")
+st.title("🎬 AI VIRAL CLIPPER (AUTO-LOGIN)")
+st.caption("Mode Cepat: API Key Sudah Tertanam. Tinggal Gas!")
 
-# --- SIDEBAR ---
+# --- KONFIGURASI (HARDCODED) ---
+# API Key Bos sudah ditanam di sini (JANGAN DISEBAR YA)
+api_key = "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"
+
+# --- SIDEBAR (SISA UPLOAD COOKIES) ---
 with st.sidebar:
     st.header("⚙️ Konfigurasi")
-    try:
-        api_key = st.secrets["GROQ_API_KEY"]
-    except:
-        api_key = st.text_input("🔑 Masukkan API Key Groq:", type="password")
+    st.success("✅ API Groq Terhubung Otomatis")
     
     st.info("ℹ️ Upload 'cookies.txt' (Wajib agar tidak diblokir).")
     uploaded_cookie = st.file_uploader("Upload Cookies", type=["txt"])
@@ -80,7 +81,7 @@ def get_transcript_ytdlp(url, cookie_path=None):
         print(f"Error Transkrip: {e}")
         return None
 
-# --- FUNGSI 2: ANALISA AI (VERSI ANTI-CRASH & REGEX) ---
+# --- FUNGSI 2: ANALISA AI (ANTI-CRASH) ---
 def analyze_virality(transcript_text, api_key):
     client = Groq(api_key=api_key)
     # Potong teks max 25rb karakter biar hemat token
@@ -103,11 +104,11 @@ def analyze_virality(transcript_text, api_key):
         completion = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
             model="llama-3.3-70b-versatile",
-            temperature=0.4 # Agak kaku biar patuh format
+            temperature=0.4 
         )
         content = completion.choices[0].message.content
         
-        # --- FILTER REGEX (NYARI KURUNG SIKU) ---
+        # --- FILTER REGEX ---
         match = re.search(r'\[.*\]', content, re.DOTALL)
         if match:
             clean_json = match.group(0)
@@ -166,8 +167,8 @@ def process_clip(video_path, start, end, output_name):
 url = st.text_input("🔗 Link YouTube:", placeholder="https://youtube.com/watch?v=...")
 
 if st.button("🚀 GAS TRANSKRIP & ANALISA"):
-    if not url or not api_key:
-        st.error("⚠️ Masukkan URL & API Key.")
+    if not url:
+        st.error("⚠️ Masukkan URL YouTube dulu Bos.")
     else:
         # Setup Cookie
         cookie_path = None
