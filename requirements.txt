@@ -2,4 +2,4 @@ streamlit
 yt-dlp
 moviepy==1.0.3
 groq
-youtube-transcript-api
+webvtt-py
