@@ -19,20 +19,20 @@ if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 
 # --- SETUP HALAMAN ---
-st.set_page_config(page_title="AI Clipper V2 (Rapi & Banyak)", page_icon="🔥", layout="wide")
+st.set_page_config(page_title="AI Clipper V3 (Stabil 4 Klip)", page_icon="⚡", layout="wide")
 
 st.markdown("""
 <style>
     .stApp { background-color: #121212; color: #E0E0E0; }
-    h1 { color: #FFD700; text-align: center; text-shadow: 0 0 10px #FFD700; }
-    .stButton>button { width: 100%; background-color: #FFD700; color: black; font-weight: bold; border-radius: 8px; }
+    h1 { color: #00E676; text-align: center; text-shadow: 0 0 10px #00E676; }
+    .stButton>button { width: 100%; background-color: #00E676; color: black; font-weight: bold; border-radius: 8px; }
     .clip-box { background-color: #1E1E1E; padding: 20px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #333; }
-    .highlight { color: #FFD700; font-weight: bold; }
+    .highlight { color: #00E676; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🔥 AI CLIPPER V2 (SUBS RAPI + 6 KLIP)")
-st.caption("Revisi: Subtitle Auto-Wrap Rapi di Tengah & Target Minimal 6 Hasil.")
+st.title("⚡ AI CLIPPER V3 (TARGET 4 KLIP)")
+st.caption("Versi Stabil: Target 4 Video Pilihan + Subtitle Rapi")
 
 # --- KONFIGURASI ---
 api_key = "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" 
@@ -75,10 +75,10 @@ def get_transcript_with_timestamps(url, cookie_path=None):
         chunk_start = 0
         current_chunk = []
         
-        # Chunking lebih besar (30s) biar AI lebih leluasa cari durasi panjang
         for caption in captions:
             start_seconds = caption.start_in_seconds
             text = caption.text.replace('\n', ' ').strip()
+            # Chunk 30 detik biar AI punya konteks cukup
             if start_seconds - chunk_start < 30: 
                 current_chunk.append(text)
             else:
@@ -93,26 +93,27 @@ def get_transcript_with_timestamps(url, cookie_path=None):
         print(f"Error VTT: {e}")
         return None, None
 
-# --- FUNGSI 2: ANALISA AI (TARGET 6 KLIP) ---
+# --- FUNGSI 2: ANALISA AI (TARGET 4 KLIP - BIAR GAK OVERLOAD) ---
 def analyze_virality(transcript_text, api_key):
     client = Groq(api_key=api_key)
-    truncated_text = transcript_text[:35000] # Tambah limit dikit
+    # Kita potong teks sedikit biar token aman
+    truncated_text = transcript_text[:32000] 
     
     prompt = """
-    Kamu adalah Video Editor Senior.
-    Tugas: Cari MINIMAL 6 (ENAM) bagian paling menarik untuk dijadikan Shorts.
+    Kamu adalah Video Editor.
+    Tugas: Cari 4 (EMPAT) bagian paling menarik untuk dijadikan Shorts.
     
     ATURAN WAJIB:
     1. GUNAKAN TIMESTAMP DARI TEKS YANG DISEDIAKAN.
-    2. Target durasi ideal: 60 - 90 detik per klip.
-    3. JIKA TIDAK ADA yang pas 60-90s, cari yang mendekati (minimal 45s, maksimal 120s) asalkan pembahasannya utuh.
-    4. HARUS MENGHASILKAN 6 KLIP. Jangan kurang.
+    2. Target durasi: 60 - 90 detik per klip.
+    3. HARUS MENGHASILKAN 4 KLIP.
     
     Output JSON MURNI:
     [
         {"start": 60, "end": 140, "title": "Judul 1", "reason": "Alasan"},
         {"start": 200, "end": 280, "title": "Judul 2", "reason": "Alasan"},
-        ... (sampai 6 item)
+        {"start": 300, "end": 380, "title": "Judul 3", "reason": "Alasan"},
+        {"start": 400, "end": 480, "title": "Judul 4", "reason": "Alasan"}
     ]
     TRANSKRIP:
     """ + truncated_text
@@ -121,14 +122,14 @@ def analyze_virality(transcript_text, api_key):
         completion = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
             model="llama-3.3-70b-versatile",
-            temperature=0.4 # Sedikit lebih kreatif biar dapet banyak
+            temperature=0.3 # Sedikit lebih rendah biar stabil dan gak halu
         )
         content = completion.choices[0].message.content
         match = re.search(r'\[.*\]', content, re.DOTALL)
         if match: return json.loads(match.group(0))
         else: raise ValueError("JSON Error")
     except:
-        return [{"start": 0, "end": 60, "title": "⚠️ AI Gagal - Mode Manual", "reason": "Coba lagi nanti"}]
+        return [{"start": 0, "end": 60, "title": "⚠️ AI Gagal - Mode Manual", "reason": "Silakan geser manual"}]
 
 # --- FUNGSI 3: DOWNLOAD VIDEO ---
 def download_video(url, cookie_path=None):
@@ -145,61 +146,48 @@ def download_video(url, cookie_path=None):
 
 # --- FUNGSI 4: GENERATOR SUBTITLE (AUTO-WRAP & RAPI) ---
 def pil_text_generator_wrapped(txt):
-    # Settingan Tampilan
     video_width = 720
     font_size = 42
-    max_text_width = video_width * 0.90 # Maksimal 90% lebar video
+    max_text_width = video_width * 0.90 
     stroke_width = 3
     
-    # Cari Font
     try:
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
     except:
         font = ImageFont.load_default()
         
-    # --- LOGIKA WRAPPING (Bungkus Teks) ---
     lines = []
     words = txt.split(' ')
     current_line = words[0]
     for word in words[1:]:
-        # Cek lebar kalau kata ini ditambahkan
         test_line = current_line + " " + word
-        bbox = font.getbbox(test_line) # (left, top, right, bottom)
+        bbox = font.getbbox(test_line) 
         w = bbox[2] - bbox[0]
         if w <= max_text_width:
             current_line = test_line
         else:
             lines.append(current_line)
             current_line = word
-    lines.append(current_line) # Tambah baris terakhir
+    lines.append(current_line) 
     
-    # --- HITUNG TINGGI CANVAS ---
-    # Hitung tinggi satu baris + sedikit spasi antar baris
     line_bbox = font.getbbox("Ay")
     line_height = (line_bbox[3] - line_bbox[1]) * 1.2 
-    total_height = int(len(lines) * line_height) + 20 # +padding
+    total_height = int(len(lines) * line_height) + 20 
     
-    # Buat Canvas Transparan
     img = PIL.Image.new('RGBA', (video_width, total_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
-    # --- GAMBAR PER BARIS ---
     y_text = 10
     for line in lines:
-        # Hitung posisi X biar tengah (Center Align)
         bbox = draw.textbbox((0, 0), line, font=font)
         text_w = bbox[2] - bbox[0]
         x_text = (video_width - text_w) / 2
         
-        # Gambar Stroke (Manual)
         for adj_x in range(-stroke_width, stroke_width+1):
             for adj_y in range(-stroke_width, stroke_width+1):
                  draw.text((x_text+adj_x, y_text+adj_y), line, font=font, fill="black")
         
-        # Gambar Teks Utama (Kuning Emas)
         draw.text((x_text, y_text), line, font=font, fill="#FFD700")
-        
-        # Pindah ke baris berikutnya
         y_text += line_height
         
     return ImageClip(np.array(img))
@@ -213,7 +201,6 @@ def process_clip_with_subs(video_path, vtt_path, start, end, output_name):
         subclip = clip.subclip(start, end)
         w, h = subclip.size
         
-        # Center Crop 9:16
         target_ratio = 9/16
         new_w = h * target_ratio
         if new_w <= w:
@@ -221,7 +208,6 @@ def process_clip_with_subs(video_path, vtt_path, start, end, output_name):
             subclip = subclip.crop(x1=x_center - new_w/2, y1=0, width=new_w, height=h)
         subclip = subclip.resize(newsize=(720, 1280))
         
-        # Bikin Subtitle Data
         captions = webvtt.read(vtt_path)
         subs_data = []
         for c in captions:
@@ -229,20 +215,17 @@ def process_clip_with_subs(video_path, vtt_path, start, end, output_name):
                 local_start = max(0, c.start_in_seconds - start)
                 local_end = min(end - start, c.end_in_seconds - start)
                 if local_end > local_start:
-                    # Bersihkan teks dari tag aneh2
                     clean_text = re.sub(r'<[^>]+>', '', c.text.replace('\n', ' ')).strip()
                     subs_data.append(((local_start, local_end), clean_text))
         
-        # Burn Subtitle (PAKAI GENERATOR WRAPPED BARU)
         if subs_data:
             try:
                 subtitles = SubtitlesClip(subs_data, pil_text_generator_wrapped)
-                # Posisi Y=900 artinya agak ke atas sedikit dari bawah (Center, 900)
                 subtitles = subtitles.set_position(('center', 900)) 
                 final_clip = CompositeVideoClip([subclip, subtitles])
-                msg = "Subtitle Rapi Aman!"
+                msg = "Subtitle Aman!"
             except Exception as e:
-                msg = f"Error Subtitle: {e}"
+                msg = f"Error Subs: {e}"
                 final_clip = subclip
         else:
             msg = "Tidak ada percakapan."
@@ -257,7 +240,7 @@ def process_clip_with_subs(video_path, vtt_path, start, end, output_name):
 # --- UI UTAMA ---
 url = st.text_input("🔗 Link YouTube:", placeholder="https://youtube.com/watch?v=...")
 
-if st.button("🚀 SCAN VIDEO (TARGET 6 KLIP)"):
+if st.button("🚀 SCAN (TARGET 4 KLIP)"):
     if not url:
         st.error("⚠️ Link kosong!")
     else:
@@ -265,8 +248,8 @@ if st.button("🚀 SCAN VIDEO (TARGET 6 KLIP)"):
         if uploaded_cookie:
             with open(cookie_path, "wb") as f: f.write(uploaded_cookie.getbuffer())
 
-        with st.status("🕵️ Mencari 6 Topik Menarik...", expanded=True) as status:
-            status.write("📑 Download Subtitle & Chunking...")
+        with st.status("🕵️ Mencari 4 Klip Terbaik...", expanded=True) as status:
+            status.write("📑 Download Subtitle...")
             transcript_text, vtt_path = get_transcript_with_timestamps(url, cookie_path)
             
             if not transcript_text:
@@ -275,7 +258,7 @@ if st.button("🚀 SCAN VIDEO (TARGET 6 KLIP)"):
             
             st.session_state.data['vtt_path'] = vtt_path
             
-            status.write("🧠 AI Menganalisa (Target 6++)...")
+            status.write("🧠 AI Menganalisa...")
             st.session_state.data['moments'] = analyze_virality(transcript_text, api_key)
             
             status.write("⬇️ Download Video...")
@@ -305,7 +288,7 @@ if 'moments' in st.session_state.data:
             <div class='clip-box'>
                 <h4 class='highlight'>#{i+1} {moment['title']}</h4>
                 <p>{moment['reason']}</p>
-                <p>⏱️ <b>{moment['start']}s - {moment['end']}s</b> (Durasi: {durasi}s)</p>
+                <p>⏱️ <b>{moment['start']}s - {moment['end']}s</b> ({durasi}s)</p>
             </div>
             """, unsafe_allow_html=True)
             
@@ -317,7 +300,7 @@ if 'moments' in st.session_state.data:
             if st.button(f"✨ RENDER #{i+1}", key=f"bt_{i}"):
                 out_file = f"final_{i}_{int(time.time())}.mp4"
                 
-                with st.spinner("🎨 Rendering Subtitle Rapi..."):
+                with st.spinner("🎨 Rendering..."):
                     success, msg = process_clip_with_subs(v_path, vtt_path, m_start, m_end, out_file)
                     
                     if success:
