@@ -13,27 +13,26 @@ import PIL.Image
 from PIL import ImageDraw, ImageFont
 import numpy as np
 
-# --- 🛠️ FIX BUG MOVIEPY / PILLOW ---
-# Ini obat kuat biar MoviePy lama bisa jalan di server baru
+# --- 🛠️ FIX BUG MOVIEPY ---
 if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 
 # --- SETUP HALAMAN ---
-st.set_page_config(page_title="AI Clipper V4 (Mixtral)", page_icon="🧠", layout="wide")
+st.set_page_config(page_title="AI Clipper V5 (Llama 3.3)", page_icon="🦄", layout="wide")
 
 st.markdown("""
 <style>
     .stApp { background-color: #121212; color: #E0E0E0; }
-    h1 { color: #00E676; text-align: center; text-shadow: 0 0 10px #00E676; }
-    .stButton>button { width: 100%; background-color: #00E676; color: black; font-weight: bold; border-radius: 8px; }
+    h1 { color: #B388FF; text-align: center; text-shadow: 0 0 10px #7C4DFF; }
+    .stButton>button { width: 100%; background-color: #7C4DFF; color: white; font-weight: bold; border-radius: 8px; }
     .clip-box { background-color: #1E1E1E; padding: 20px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #333; }
     .error-box { background-color: #CF6679; color: black; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
-    .highlight { color: #00E676; font-weight: bold; }
+    .highlight { color: #B388FF; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🧠 AI CLIPPER V4 (MIXTRAL INTELLIGENCE)")
-st.caption("Otak Baru: Menggunakan Model Mixtral untuk akurasi lebih tinggi.")
+st.title("🦄 AI CLIPPER V5 (LLAMA 3.3)")
+st.caption("Model Baru (Llama 3.3) + JSON Mode (Anti Error Format)")
 
 # --- KONFIGURASI ---
 api_key = "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" 
@@ -76,7 +75,6 @@ def get_transcript_with_timestamps(url, cookie_path=None):
         chunk_start = 0
         current_chunk = []
         
-        # Chunk 30 detik
         for caption in captions:
             start_seconds = caption.start_in_seconds
             text = caption.text.replace('\n', ' ').strip()
@@ -94,50 +92,52 @@ def get_transcript_with_timestamps(url, cookie_path=None):
         print(f"Error VTT: {e}")
         return None, None
 
-# --- FUNGSI 2: ANALISA AI (GANTI KE MIXTRAL) ---
+# --- FUNGSI 2: ANALISA AI (LLAMA 3.3 + JSON MODE) ---
 def analyze_virality(transcript_text, api_key):
     client = Groq(api_key=api_key)
-    # Potong teks max 28k karakter (Mixtral kuat baca panjang)
     truncated_text = transcript_text[:28000] 
     
+    # Prompt disesuaikan untuk JSON Mode
     prompt = """
-    Kamu adalah Video Editor Profesional.
-    Tugas: Temukan 4 (EMPAT) momen paling menarik dari transkrip video ini.
+    Kamu adalah Video Editor.
+    Analisa transkrip berikut dan temukan 4 (EMPAT) momen paling menarik.
     
-    ATURAN TEKNIS (PENTING):
-    1. Output HANYA JSON. Jangan ada teks basa-basi.
-    2. Gunakan timestamp dari teks.
-    3. Durasi klip: 60 - 90 detik.
+    ATURAN:
+    1. Output HARUS JSON Object dengan key "clips".
+    2. Format per klip: {"start": angka, "end": angka, "title": "teks", "reason": "teks"}.
+    3. Gunakan timestamp asli dari teks.
+    4. Durasi klip: 60 - 90 detik.
     
-    Contoh Output:
-    [
-        {"start": 60, "end": 140, "title": "Topik A", "reason": "Alasan A"},
-        {"start": 200, "end": 280, "title": "Topik B", "reason": "Alasan B"}
-    ]
-
     TRANSKRIP:
     """ + truncated_text
     
     try:
         completion = client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            # PAKAI MIXTRAL BIAR GAK BEGO
-            model="mixtral-8x7b-32768", 
-            temperature=0.2 
+            # MODEL TERBARU YANG AKTIF
+            model="llama-3.3-70b-versatile",
+            temperature=0.2,
+            # FITUR ANTI-BODOH: PAKSA JSON
+            response_format={"type": "json_object"}
         )
         content = completion.choices[0].message.content
         
-        # Regex Cleaner (Pembersih Jawaban AI)
-        match = re.search(r'\[.*\]', content, re.DOTALL)
-        if match:
-            clean_json = match.group(0)
-            return json.loads(clean_json)
+        # Karena pakai JSON Mode, kita langsung load aja
+        data = json.loads(content)
+        
+        # Handle kalau dia bungkus pakai key 'clips' atau langsung list
+        if "clips" in data:
+            return data["clips"]
+        elif isinstance(data, list):
+            return data
         else:
-            # Kalau regex gagal, kita lempar error biar dibaca di UI
-            raise ValueError(f"AI Menjawab tapi format salah: {content[:100]}...")
+            # Coba cari list di dalam value manapun
+            for key, val in data.items():
+                if isinstance(val, list):
+                    return val
+            return []
             
     except Exception as e:
-        # Kembalikan Error sebagai data dummy biar UI gak crash total
         return [{"start": 0, "end": 60, "title": "⚠️ ERROR AI", "reason": str(e)}]
 
 # --- FUNGSI 3: DOWNLOAD VIDEO ---
@@ -249,7 +249,7 @@ def process_clip_with_subs(video_path, vtt_path, start, end, output_name):
 # --- UI UTAMA ---
 url = st.text_input("🔗 Link YouTube:", placeholder="https://youtube.com/watch?v=...")
 
-if st.button("🚀 SCAN (MIXTRAL POWER)"):
+if st.button("🚀 SCAN (LLAMA 3.3)"):
     if not url:
         st.error("⚠️ Link kosong!")
     else:
@@ -267,7 +267,7 @@ if st.button("🚀 SCAN (MIXTRAL POWER)"):
             
             st.session_state.data['vtt_path'] = vtt_path
             
-            status.write("🧠 AI (Mixtral) Menganalisa...")
+            status.write("🧠 AI (Llama 3.3) Menganalisa...")
             st.session_state.data['moments'] = analyze_virality(transcript_text, api_key)
             
             status.write("⬇️ Download Video...")
@@ -293,19 +293,11 @@ if 'moments' in st.session_state.data:
     if len(moments) == 1 and "ERROR AI" in moments[0]['title']:
          st.markdown(f"""
         <div class='error-box'>
-            <h3>🚨 AI GAGAL MEMPROSES</h3>
-            <p><b>Penyebab:</b> {moments[0]['reason']}</p>
-            <hr>
-            <p>Solusi:</p>
-            <ul>
-                <li>Coba refresh halaman dan tekan tombol Scan lagi.</li>
-                <li>Coba video lain yang lebih pendek.</li>
-                <li>Pastikan API Key Groq masih aktif (Limit harian belum habis).</li>
-            </ul>
+            <h3>🚨 AI ERROR: {moments[0]['reason']}</h3>
+            <p>Model yang diminta sudah diganti ke Llama 3.3 yang aktif.</p>
         </div>
         """, unsafe_allow_html=True)
     
-    # Render Klip Normal
     for i, moment in enumerate(moments):
         col1, col2 = st.columns([3, 1])
         with col1:
