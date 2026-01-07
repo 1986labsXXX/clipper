@@ -9,24 +9,24 @@ import re
 import glob
 
 # --- SETUP HALAMAN ---
-st.set_page_config(page_title="AI Viral Clipper (Anti-Reset)", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="AI Viral Clipper (Fix Download)", page_icon="💾", layout="wide")
 
 st.markdown("""
 <style>
     .stApp { background-color: #0E1117; color: #FAFAFA; }
-    h1 { color: #FFD700; text-align: center; }
-    .stButton>button { width: 100%; background-color: #FFD700; color: black; font-weight: bold; border-radius: 8px; }
+    h1 { color: #00E676; text-align: center; }
+    .stButton>button { width: 100%; background-color: #00E676; color: black; font-weight: bold; border-radius: 8px; }
     .clip-box { background-color: #1F2937; padding: 15px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #374151; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚡ AI VIRAL CLIPPER (MEMORI PERMANEN)")
-st.caption("Versi Fix: Tombol Potong Tidak Akan Reset ke Awal Lagi.")
+st.title("💾 AI VIRAL CLIPPER (FIX DOWNLOAD)")
+st.caption("Versi Final: Download Menggunakan RAM (Anti-File Hilang)")
 
 # --- KONFIGURASI ---
 api_key = "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" # API Key Bos
 
-# --- INISIALISASI MEMORI (SESSION STATE) ---
+# --- INISIALISASI MEMORI ---
 if 'viral_moments' not in st.session_state:
     st.session_state.viral_moments = []
 if 'video_path' not in st.session_state:
@@ -36,8 +36,8 @@ if 'video_title' not in st.session_state:
 
 with st.sidebar:
     st.header("⚙️ Konfigurasi")
-    st.success("✅ API Groq Ready")
-    st.info("ℹ️ Upload 'cookies.txt' biar makin lancar.")
+    st.success("✅ API Ready")
+    st.info("ℹ️ Upload 'cookies.txt' agar lancar.")
     uploaded_cookie = st.file_uploader("Upload Cookies", type=["txt"])
 
 # --- FUNGSI 1: SEDOT TRANSKRIP ---
@@ -109,7 +109,7 @@ def analyze_virality(transcript_text, api_key):
     except:
         return [{"start": 0, "end": 30, "title": "⚠️ Mode Manual", "reason": "AI Error"}]
 
-# --- FUNGSI 3: DOWNLOAD VIDEO (VERSI RINGAN) ---
+# --- FUNGSI 3: DOWNLOAD VIDEO ---
 def download_video(url, cookie_path=None):
     if not os.path.exists("downloads"): os.makedirs("downloads")
     ydl_opts = {
@@ -123,7 +123,7 @@ def download_video(url, cookie_path=None):
         info = ydl.extract_info(url, download=True)
         return ydl.prepare_filename(info), info['title']
 
-# --- FUNGSI 4: CROP 9:16 ---
+# --- FUNGSI 4: CROP 9:16 (MODIFIKASI DEBUG) ---
 def process_clip(video_path, start, end, output_name):
     try:
         with VideoFileClip(video_path) as clip:
@@ -144,14 +144,15 @@ def process_clip(video_path, start, end, output_name):
                 final_clip = subclip.resize(height=1280)
             
             final_clip.write_videofile(output_name, codec='libx264', audio_codec='aac', preset='ultrafast', logger=None)
-            return True
-    except: return False
+            return True, None # Sukses
+    except Exception as e:
+        return False, str(e) # Gagal & kirim error
 
 # --- UI UTAMA ---
 url = st.text_input("🔗 Link YouTube:", placeholder="https://youtube.com/watch?v=...")
 
-# Tombol 1: ANALISA (Hanya simpan data ke memori)
-if st.button("🚀 GAS (MODE CEPAT)"):
+# TOMBOL 1: ANALISA
+if st.button("🚀 GAS (ANALISA)"):
     if not url:
         st.error("⚠️ Link kosong!")
     else:
@@ -164,16 +165,14 @@ if st.button("🚀 GAS (MODE CEPAT)"):
             transcript_text = get_transcript_ytdlp(url, cookie_path)
             
             if not transcript_text or len(transcript_text) < 50:
-                status.error("❌ Gagal ambil subtitle/video.")
+                status.error("❌ Gagal ambil subtitle.")
                 st.stop()
             
             status.write("🧠 AI Berpikir...")
-            # SIMPAN KE SESSION STATE
             st.session_state.viral_moments = analyze_virality(transcript_text, api_key)
             
             status.write("⬇️ Download Video Ringan...")
             try:
-                # SIMPAN PATH KE SESSION STATE
                 v_path, v_title = download_video(url, cookie_path)
                 st.session_state.video_path = v_path
                 st.session_state.video_title = v_title
@@ -181,10 +180,9 @@ if st.button("🚀 GAS (MODE CEPAT)"):
                 status.error(f"❌ Gagal download: {e}")
                 st.stop()
                 
-            status.update(label="✅ SELESAI! Data Tersimpan.", state="complete", expanded=False)
+            status.update(label="✅ SELESAI!", state="complete", expanded=False)
 
-# --- BAGIAN TAMPILAN HASIL (DILUAR LOGIKA TOMBOL ANALISA) ---
-# Bagian ini akan selalu muncul selama data ada di memori
+# TAMPILAN HASIL
 if st.session_state.video_path and st.session_state.viral_moments:
     st.markdown("---")
     st.subheader(f"🎬 {st.session_state.video_title}")
@@ -198,19 +196,44 @@ if st.session_state.video_path and st.session_state.viral_moments:
             m_start, m_end = st.slider(f"Durasi #{i+1}", 0, d_dur, (int(moment['start']), int(moment['end'])), key=f"s_{i}")
         
         with col2:
-            # Tombol 2: EKSEKUSI POTONG (Pake data dari memori)
+            # TOMBOL 2: RENDER & DOWNLOAD
             if st.button(f"🎬 RENDER #{i+1}", key=f"b_{i}"):
-                out = f"short_{i}_{int(time.time())}.mp4"
-                with st.spinner("Rendering..."):
-                    # Ambil path video dari session state
-                    if process_clip(st.session_state.video_path, m_start, m_end, out):
-                        st.success("✅ Berhasil!")
-                        st.video(out)
-                        with open(out, "rb") as f: st.download_button("⬇️ SIMPAN", f, file_name=out)
-                        try: os.remove(out)
-                        except: pass
-    
-    if st.button("🗑️ Reset / Ganti Video"):
+                out_file = f"short_{i}_{int(time.time())}.mp4"
+                
+                with st.spinner("⏳ Rendering... (Tunggu sampai tombol download muncul)"):
+                    # Proses Clip
+                    success, error_msg = process_clip(st.session_state.video_path, m_start, m_end, out_file)
+                    
+                    if success:
+                        st.success("✅ Video Siap!")
+                        
+                        # --- TRIK RAHASIA: BACA KE RAM ---
+                        # Kita baca videonya jadi 'Bytes' biar aman disimpan di tombol download
+                        try:
+                            with open(out_file, "rb") as f:
+                                video_bytes = f.read()
+                            
+                            # Tampilkan Preview
+                            st.video(video_bytes)
+                            
+                            # Tampilkan Tombol Download (Pakai data dari RAM)
+                            st.download_button(
+                                label="⬇️ DOWNLOAD MP4",
+                                data=video_bytes,
+                                file_name=f"Shorts_{i+1}.mp4",
+                                mime="video/mp4"
+                            )
+                            
+                            # Hapus file fisik (Aman karena data udah di RAM tombol)
+                            os.remove(out_file)
+                            
+                        except Exception as e:
+                            st.error(f"Gagal menyiapkan download: {e}")
+                            
+                    else:
+                        st.error(f"❌ Render Gagal: {error_msg}")
+
+    if st.button("🗑️ Reset Semua"):
         st.session_state.viral_moments = []
         st.session_state.video_path = None
         st.rerun()
