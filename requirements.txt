@@ -6,3 +6,4 @@ gTTS
 pandas
 numpy
 pillow
+edge-tts
