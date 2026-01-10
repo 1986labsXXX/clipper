@@ -6,6 +6,11 @@ from gtts import gTTS
 import tempfile
 import os
 
+import PIL.Image
+# MANTRA PERBAIKAN BUG ANTIALIAS
+if not hasattr(PIL.Image, 'ANTIALIAS'):
+    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
+
 # --- KONFIGURASI IMAGEMAGICK (PENTING BUAT CLOUD) ---
 # Di Streamlit Cloud, biasanya ImageMagick ada di path ini
 if os.path.exists("/usr/bin/convert"):
