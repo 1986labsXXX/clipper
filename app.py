@@ -5,16 +5,21 @@ from moviepy.config import change_settings
 from gtts import gTTS
 import tempfile
 import os
-
 import PIL.Image
-# MANTRA PERBAIKAN BUG ANTIALIAS
+
+# --- 1. PERBAIKAN BUG ANTIALIAS (YANG TADI) ---
 if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 
-# --- KONFIGURASI IMAGEMAGICK (PENTING BUAT CLOUD) ---
-# Di Streamlit Cloud, biasanya ImageMagick ada di path ini
+# --- 2. PERBAIKAN SECURITY POLICY (YANG BARU) ---
+# Kita kasih tau ImageMagick: "Woi, baca aturan dari folder ini aja!"
+os.environ['MAGICK_CONFIGURE_PATH'] = os.getcwd()
+
+# --- 3. KONFIGURASI BINARY ---
 if os.path.exists("/usr/bin/convert"):
     change_settings({"IMAGEMAGICK_BINARY": "/usr/bin/convert"})
+
+# ... (lanjut ke st.set_page_config dst)
 
 st.set_page_config(page_title="Tiktok Quiz Generator by M", layout="wide")
 
