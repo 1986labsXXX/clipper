@@ -17,14 +17,32 @@ import textwrap
 from io import StringIO
 
 st.set_page_config(page_title="Survival Shorts Maker", layout="wide")
-st.title("💀 Survival Shorts Maker (Christopher Voice)")
-st.markdown("Fitur: **Suara Cowok Deep** + **Pilih Nomor Soal**.")
+st.title("💀 Survival Shorts Maker (Audio Max)")
+st.markdown("Fitur: **3 Pilihan Suara** + **Volume Boost +20%**.")
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.header("1. Konfigurasi")
-    st.info("🎙️ Voice Active: Christopher (Male/Deep)")
+    st.header("1. Konfigurasi Suara")
+    # PILIHAN 3 SUARA HORROR
+    voice_option = st.selectbox(
+        "Pilih Karakter Suara:",
+        [
+            "Christopher (Cowok Deep/Thriller)", 
+            "Eric (Cowok Intense/Tegas)", 
+            "Ana (Cewek/Anak Kecil Creepy)"
+        ],
+        index=0
+    )
     
+    # Mapping nama ke kode Edge-TTS
+    voice_map = {
+        "Christopher (Cowok Deep/Thriller)": "en-US-ChristopherNeural",
+        "Eric (Cowok Intense/Tegas)": "en-US-EricNeural",
+        "Ana (Cewek/Anak Kecil Creepy)": "en-US-AnaNeural"
+    }
+    selected_voice = voice_map[voice_option]
+    
+    st.write("---")
     st.header("2. Upload Bahan")
     bg_video_file = st.file_uploader("Upload Background Video (.mp4)", type=["mp4"])
     font_file = st.file_uploader("Upload Font (.ttf) - WAJIB TEBAL", type=["ttf"])
@@ -38,28 +56,26 @@ A rabid dog chases you!,Run away,Stand ground & yell,Stand ground & yell"""
 quiz_data_text = st.text_area("Paste SEMUA CSV lo di sini (50 baris gass!)", value=example_csv, height=150)
 
 # --- PILIH SOAL ---
-df = pd.DataFrame() # Inisialisasi kosong
+df = pd.DataFrame() 
 try:
     df = pd.read_csv(StringIO(quiz_data_text))
     df.columns = [c.strip() for c in df.columns]
-except:
-    pass
+except: pass
 
 total_soal = len(df) if not df.empty else 1
 st.write("---")
 col1, col2 = st.columns([1, 3])
 with col1:
-    # FITUR PILIH NOMOR SOAL BIAR GAK CRASH RENDER BANYAK
     nomor_soal = st.number_input(f"Pilih Soal Nomor Berapa? (1 - {total_soal})", min_value=1, max_value=total_soal, value=1)
 with col2:
     if not df.empty and nomor_soal <= len(df):
         preview_soal = df.iloc[nomor_soal-1]['Pertanyaan']
         st.info(f"📝 Preview Soal {nomor_soal}: **{preview_soal}**")
 
-# --- FUNGSI SUARA (CHRISTOPHER) ---
-async def get_edge_voice(text, filename):
-    # KITA PAKSA SUARA COWOK DI SINI
-    communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural")
+# --- FUNGSI SUARA (EDGE TTS + BOOST) ---
+async def get_edge_voice(text, filename, voice_id):
+    # VOLUME NAIK 20%, SPEED TURUN 10% (BIAR LEBIH JELAS & DRAMATIS)
+    communicate = edge_tts.Communicate(text, voice_id, rate="-10%", volume="+20%")
     await communicate.save(filename)
 
 # --- FUNGSI VISUAL ---
@@ -90,10 +106,11 @@ def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer
     box_right = text_x + text_width + padding
     box_bottom = text_y + text_height + padding
     
+    # Visual Horror (Merah Darah vs Hitam Pekat)
     if is_answer:
-        box_color = (139, 0, 0, 200) # Merah Darah
+        box_color = (139, 0, 0, 200) 
     else:
-        box_color = (0, 0, 0, 180) # Hitam Pekat
+        box_color = (0, 0, 0, 180) 
         
     draw.rectangle([box_left, box_top, box_right, box_bottom], fill=box_color, outline=None)
     shadow_offset = 4
@@ -105,7 +122,7 @@ def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer
     return clip
 
 # --- LOGIC UTAMA ---
-def generate_video(row, bg_clip, font_path, music_path, sfx_path, status_placeholder):
+def generate_video(row, bg_clip, font_path, music_path, sfx_path, voice_id, status_placeholder):
     duration_q = 9  
     duration_ans = 3
     total_duration = duration_q + duration_ans
@@ -127,12 +144,13 @@ def generate_video(row, bg_clip, font_path, music_path, sfx_path, status_placeho
         video = video.crop(x1=video.w/2 - new_width/2, width=new_width, height=video.h)
     video = video.resize(newsize=(1080, 1920)) 
     
-    # 2. Audio (CHRISTOPHER)
-    status_placeholder.text("🎙️ Christopher take voice over...")
+    # 2. Audio (VOICE + VOLUME BOOST)
+    status_placeholder.text("🎙️ Voice Over Recording...")
     audio_clips = []
     
     tts_filename = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
-    asyncio.run(get_edge_voice(str(row['Pertanyaan']), tts_filename))
+    # Kirim parameter voice_id yg dipilih user
+    asyncio.run(get_edge_voice(str(row['Pertanyaan']), tts_filename, voice_id))
     
     tts_clip = AudioFileClip(tts_filename)
     audio_clips.append(tts_clip)
@@ -141,6 +159,7 @@ def generate_video(row, bg_clip, font_path, music_path, sfx_path, status_placeho
         try:
             m_clip = AudioFileClip(music_path)
             cut_duration = min(m_clip.duration, total_duration)
+            # Volume musik 0.4 biar pas sama suara narator yg udah diboost
             bg_music = m_clip.subclip(0, cut_duration).volumex(0.4) 
             audio_clips.append(bg_music)
         except: pass
@@ -174,7 +193,7 @@ def generate_video(row, bg_clip, font_path, music_path, sfx_path, status_placeho
     return final
 
 # --- EKSEKUSI ---
-if st.button("💀 Generate Video Soal Ini"):
+if st.button("💀 Generate Video"):
     status_text = st.empty()
     
     if not bg_video_file or not font_file:
@@ -209,10 +228,10 @@ if st.button("💀 Generate Video Soal Ini"):
             
             bg_clip = VideoFileClip(tfile_bg.name)
             
-            # Generate
-            result_clip = generate_video(selected_row, bg_clip, tfile_font.name, music_path, sfx_path, status_text)
+            # Generate dengan Voice Pilihan
+            result_clip = generate_video(selected_row, bg_clip, tfile_font.name, music_path, sfx_path, selected_voice, status_text)
             
-            status_text.text("🩸 Rendering... (Tunggu bentar)")
+            status_text.text("🩸 Rendering... (Audio Boosted)")
             output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
             result_clip.write_videofile(
                 output_path, 
@@ -225,10 +244,9 @@ if st.button("💀 Generate Video Soal Ini"):
             )
             
             status_text.text("✅ Jadi!")
-            st.success(f"✅ Video Soal {nomor_soal} Selesai!")
+            st.success(f"✅ Video Soal {nomor_soal} Selesai! Suara: {voice_option}")
             st.video(output_path)
             
-            # Nama file download dinamis
             safe_filename = f"survival_quiz_{nomor_soal}.mp4"
             with open(output_path, "rb") as file:
                 st.download_button(f"Download Video Soal {nomor_soal}", file, safe_filename, mime="video/mp4")
