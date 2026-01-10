@@ -1,9 +1,9 @@
 import streamlit as st
-# --- OBAT KUAT ANTIALIAS (WAJIB PALING ATAS) ---
+# --- OBAT KUAT ANTIALIAS (WAJIB) ---
 import PIL.Image
 if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
-# -----------------------------------------------
+# -----------------------------------
 
 import pandas as pd
 from moviepy.editor import *
@@ -15,9 +15,10 @@ from PIL import Image, ImageDraw, ImageFont
 import textwrap
 from io import StringIO
 
-st.set_page_config(page_title="Tiktok Quiz Generator (Ultimate)", layout="wide")
-st.title("⚡ TikTok Quiz Generator (Ultimate Version)")
-st.markdown("Fitur Lengkap: SFX 'Ting', Visual US Market, TTS Bule.")
+# GANTI JUDUL APP JADI YOUTUBE
+st.set_page_config(page_title="YouTube Shorts Factory", layout="wide")
+st.title("🟥 YouTube Shorts Generator (Safe Zone Fixed)")
+st.markdown("Layout dikalibrasi anti-ketutup tombol Subscribe & Judul.")
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -27,15 +28,14 @@ with st.sidebar:
     st.header("2. Upload Bahan")
     bg_video_file = st.file_uploader("Upload Background Video (.mp4)", type=["mp4"])
     font_file = st.file_uploader("Upload Font (.ttf) - WAJIB TEBAL", type=["ttf"])
-    music_file = st.file_uploader("Upload Musik Background (.mp3)", type=["mp3"])
-    # FITUR BARU: SFX UPLOADER
-    sfx_file = st.file_uploader("Upload SFX Jawaban 'Ting' (.mp3)", type=["mp3"], help="Suara yang muncul pas jawaban keluar.")
+    music_file = st.file_uploader("Upload Musik (.mp3) - PAKE NO COPYRIGHT!", type=["mp3"])
+    sfx_file = st.file_uploader("Upload SFX Jawaban 'Ting' (.mp3)", type=["mp3"])
 
 st.header("3. Data Kuis")
 example_csv = """Pertanyaan,Pilihan A,Pilihan B,Jawaban Benar
-What is the capital of New York?,New York City,Albany,Albany
+Capital of New York?,New York City,Albany,Albany
 What has keys but no locks?,A Piano,A Map,A Piano"""
-quiz_data_text = st.text_area("Masukkan Data Kuis (Format: Pertanyaan, A, B, Jawaban)", value=example_csv, height=150)
+quiz_data_text = st.text_area("Masukkan Data Kuis (Format CSV)", value=example_csv, height=150)
 
 # --- FUNGSI VISUAL (PILLOW) ---
 def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer=False):
@@ -53,7 +53,7 @@ def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer
         font = ImageFont.load_default()
     
     if not font_loaded:
-        st.toast(f"⚠️ Font default dipake (upload font tebal biar bagus).")
+        st.toast(f"⚠️ Font default dipake.")
 
     avg_char_width = fontsize * 0.5 
     if not font_loaded: avg_char_width = fontsize * 0.3
@@ -93,13 +93,13 @@ def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer
     clip = ImageClip(numpy_img).set_duration(duration)
     return clip
 
-# --- LOGIC UTAMA (Updated Audio) ---
+# --- LOGIC UTAMA (YOUTUBE LAYOUT) ---
 def generate_video(row, bg_clip, font_path, music_path, sfx_path, lang_code):
     duration_q = 5
     duration_ans = 2
     total_duration = duration_q + duration_ans
     
-    # 1. Video Cut
+    # 1. Video Processing
     import random
     if bg_clip.duration > total_duration:
         start_t = random.uniform(0, bg_clip.duration - total_duration)
@@ -107,7 +107,6 @@ def generate_video(row, bg_clip, font_path, music_path, sfx_path, lang_code):
     else:
         video = bg_clip.subclip(0, total_duration)
         
-    # Resize Logic
     target_ratio = 9/16
     current_ratio = video.w / video.h
     if current_ratio > target_ratio:
@@ -116,60 +115,62 @@ def generate_video(row, bg_clip, font_path, music_path, sfx_path, lang_code):
         video = video.crop(x1=video.w/2 - new_width/2, width=new_width, height=video.h)
     video = video.resize(newsize=(1080, 1920)) 
     
-    # 2. AUDIO MIXING (Bagian SFX di sini)
+    # 2. Audio Processing
     audio_clips = []
     
-    # a. TTS (Suara Soal)
+    # TTS
     tts = gTTS(text=str(row['Pertanyaan']), lang=lang_code)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
         tts.save(fp.name)
         tts_clip = AudioFileClip(fp.name)
         audio_clips.append(tts_clip)
     
-    # b. Background Music (Low Volume)
+    # Music
     if music_path:
         bg_music = AudioFileClip(music_path).subclip(0, total_duration).volumex(0.1)
         audio_clips.append(bg_music)
         
-    # c. SFX 'Ting' (Start di detik ke-5)
+    # SFX
     if sfx_path:
-        # Load SFX
-        sfx = AudioFileClip(sfx_path)
-        # Set waktu muncul (pas jawaban nongol)
-        sfx = sfx.set_start(duration_q)
+        sfx = AudioFileClip(sfx_path).set_start(duration_q)
         audio_clips.append(sfx)
     
-    # Gabung Semua Audio
     final_audio = CompositeAudioClip(audio_clips)
     video = video.set_audio(final_audio)
 
-    # 3. Visual Setup
+    # 3. VISUAL LAYOUT (YOUTUBE SAFE ZONE)
+    # Area Aman YouTube: Tengah ke Atas. Bawah (Y > 1400) itu Zona Bahaya.
+    
+    # Pertanyaan (Posisi: 300 px dari atas) -> AMAN
     clip_q = create_text_clip_pil(str(row['Pertanyaan']), font_path, 75, 1080, total_duration)
-    clip_q = clip_q.set_position(('center', 350))
+    clip_q = clip_q.set_position(('center', 300))
     
+    # Pilihan A (Posisi: 850 px) -> NAIK DIKIT
     clip_a = create_text_clip_pil(f"A. {row['Pilihan A']}", font_path, 65, 1080, total_duration)
-    clip_a = clip_a.set_position(('center', 950))
+    clip_a = clip_a.set_position(('center', 850))
     
+    # Pilihan B (Posisi: 1100 px) -> NAIK DIKIT
     clip_b = create_text_clip_pil(f"B. {row['Pilihan B']}", font_path, 65, 1080, total_duration)
-    clip_b = clip_b.set_position(('center', 1250))
+    clip_b = clip_b.set_position(('center', 1100))
     
+    # Jawaban (Posisi: 1350 px) -> KRUSIAL!
+    # Kalau ditaruh di 1600 kayak tadi, bakal ketutup Judul Video/Channel Name.
+    # Kita taruh di 1350, di bawah Pilihan B tapi masih di atas UI YouTube.
     clip_c = create_text_clip_pil(f"Answer: {row['Jawaban Benar']}", font_path, 85, 1080, duration_ans, is_answer=True)
-    clip_c = clip_c.set_start(duration_q).set_position(('center', 1600))
+    clip_c = clip_c.set_start(duration_q).set_position(('center', 1350))
 
     final = CompositeVideoClip([video, clip_q, clip_a, clip_b, clip_c])
     return final
 
 # --- EKSEKUSI ---
-if st.button("🚀 Generate Video (With SFX)"):
+if st.button("🚀 Generate Shorts (YouTube Safe)"):
     if not bg_video_file or not font_file:
         st.error("⚠️ Upload Bahan Wajib: Video & Font!")
     else:
         try:
-            with st.spinner('Meracik video dengan bumbu SFX...'):
-                # 1. Save Uploaded Files
+            with st.spinner('Merakit Shorts anti-copyright...'):
                 tfile_bg = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
                 tfile_bg.write(bg_video_file.read())
-                
                 tfile_font = tempfile.NamedTemporaryFile(delete=False, suffix='.ttf')
                 tfile_font.write(font_file.read())
                 
@@ -178,14 +179,13 @@ if st.button("🚀 Generate Video (With SFX)"):
                     tfile_music = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
                     tfile_music.write(music_file.read())
                     music_path = tfile_music.name
-                    
+                
                 sfx_path = None
                 if sfx_file:
                     tfile_sfx = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
                     tfile_sfx.write(sfx_file.read())
                     sfx_path = tfile_sfx.name
                 
-                # 2. Read Data
                 try:
                     df = pd.read_csv(StringIO(quiz_data_text))
                     df.columns = [c.strip() for c in df.columns]
@@ -193,32 +193,20 @@ if st.button("🚀 Generate Video (With SFX)"):
                     st.error("❌ Format CSV Salah.")
                     st.stop()
                 
-                if df.empty:
-                    st.stop()
+                if df.empty: st.stop()
 
-                # 3. Generate
                 bg_clip = VideoFileClip(tfile_bg.name)
                 first_row = df.iloc[0] 
                 
                 result_clip = generate_video(first_row, bg_clip, tfile_font.name, music_path, sfx_path, tts_lang)
                 
-                # 4. Render
                 output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
-                result_clip.write_videofile(
-                    output_path, 
-                    codec='libx264', 
-                    audio_codec='aac', 
-                    fps=24, 
-                    preset='ultrafast', 
-                    threads=4,
-                    ffmpeg_params=['-pix_fmt', 'yuv420p']
-                )
+                result_clip.write_videofile(output_path, codec='libx264', audio_codec='aac', fps=24, preset='ultrafast', threads=4, ffmpeg_params=['-pix_fmt', 'yuv420p'])
                 
-                st.success("✅ Video Jadi! Ada bunyi 'Ting'-nya gak?")
+                st.success("✅ Shorts Jadi! Upload ke YouTube, kasih #Shorts di judul.")
                 st.video(output_path)
-                
                 with open(output_path, "rb") as file:
-                    st.download_button("Download Video MP4", file, "quiz_with_sfx.mp4", mime="video/mp4")
+                    st.download_button("Download Shorts MP4", file, "shorts_ready.mp4", mime="video/mp4")
                     
         except Exception as e:
             st.error(f"Error: {e}")
