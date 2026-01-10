@@ -15,10 +15,9 @@ from PIL import Image, ImageDraw, ImageFont
 import textwrap
 from io import StringIO
 
-# GANTI JUDUL APP JADI YOUTUBE
 st.set_page_config(page_title="YouTube Shorts Factory", layout="wide")
-st.title("🟥 YouTube Shorts Generator (Safe Zone Fixed)")
-st.markdown("Layout dikalibrasi anti-ketutup tombol Subscribe & Judul.")
+st.title("🟥 YouTube Shorts Generator (Audio Fix)")
+st.markdown("Update: Musik lebih kencang (30%) & Jawaban muncul di detik ke-6.")
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -28,7 +27,7 @@ with st.sidebar:
     st.header("2. Upload Bahan")
     bg_video_file = st.file_uploader("Upload Background Video (.mp4)", type=["mp4"])
     font_file = st.file_uploader("Upload Font (.ttf) - WAJIB TEBAL", type=["ttf"])
-    music_file = st.file_uploader("Upload Musik (.mp3) - PAKE NO COPYRIGHT!", type=["mp3"])
+    music_file = st.file_uploader("Upload Musik (.mp3)", type=["mp3"])
     sfx_file = st.file_uploader("Upload SFX Jawaban 'Ting' (.mp3)", type=["mp3"])
 
 st.header("3. Data Kuis")
@@ -93,9 +92,10 @@ def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer
     clip = ImageClip(numpy_img).set_duration(duration)
     return clip
 
-# --- LOGIC UTAMA (YOUTUBE LAYOUT) ---
+# --- LOGIC UTAMA (Updated Timing & Volume) ---
 def generate_video(row, bg_clip, font_path, music_path, sfx_path, lang_code):
-    duration_q = 5
+    # UPDATE TIMING DI SINI
+    duration_q = 6 # Detik ke-6 baru jawaban muncul (sebelumnya 5)
     duration_ans = 2
     total_duration = duration_q + duration_ans
     
@@ -125,13 +125,15 @@ def generate_video(row, bg_clip, font_path, music_path, sfx_path, lang_code):
         tts_clip = AudioFileClip(fp.name)
         audio_clips.append(tts_clip)
     
-    # Music
+    # Music (UPDATE VOLUME)
     if music_path:
-        bg_music = AudioFileClip(music_path).subclip(0, total_duration).volumex(0.1)
+        # Volumex dinaikin jadi 0.3 (30%) biar kedengeran
+        bg_music = AudioFileClip(music_path).subclip(0, total_duration).volumex(0.3)
         audio_clips.append(bg_music)
         
-    # SFX
+    # SFX (UPDATE TIMING)
     if sfx_path:
+        # Muncul pas duration_q (detik ke-6)
         sfx = AudioFileClip(sfx_path).set_start(duration_q)
         audio_clips.append(sfx)
     
@@ -139,23 +141,17 @@ def generate_video(row, bg_clip, font_path, music_path, sfx_path, lang_code):
     video = video.set_audio(final_audio)
 
     # 3. VISUAL LAYOUT (YOUTUBE SAFE ZONE)
-    # Area Aman YouTube: Tengah ke Atas. Bawah (Y > 1400) itu Zona Bahaya.
     
-    # Pertanyaan (Posisi: 300 px dari atas) -> AMAN
     clip_q = create_text_clip_pil(str(row['Pertanyaan']), font_path, 75, 1080, total_duration)
     clip_q = clip_q.set_position(('center', 300))
     
-    # Pilihan A (Posisi: 850 px) -> NAIK DIKIT
     clip_a = create_text_clip_pil(f"A. {row['Pilihan A']}", font_path, 65, 1080, total_duration)
     clip_a = clip_a.set_position(('center', 850))
     
-    # Pilihan B (Posisi: 1100 px) -> NAIK DIKIT
     clip_b = create_text_clip_pil(f"B. {row['Pilihan B']}", font_path, 65, 1080, total_duration)
     clip_b = clip_b.set_position(('center', 1100))
     
-    # Jawaban (Posisi: 1350 px) -> KRUSIAL!
-    # Kalau ditaruh di 1600 kayak tadi, bakal ketutup Judul Video/Channel Name.
-    # Kita taruh di 1350, di bawah Pilihan B tapi masih di atas UI YouTube.
+    # Jawaban muncul pas duration_q (detik ke-6)
     clip_c = create_text_clip_pil(f"Answer: {row['Jawaban Benar']}", font_path, 85, 1080, duration_ans, is_answer=True)
     clip_c = clip_c.set_start(duration_q).set_position(('center', 1350))
 
@@ -163,12 +159,12 @@ def generate_video(row, bg_clip, font_path, music_path, sfx_path, lang_code):
     return final
 
 # --- EKSEKUSI ---
-if st.button("🚀 Generate Shorts (YouTube Safe)"):
+if st.button("🚀 Generate Shorts (Fix Audio & Timing)"):
     if not bg_video_file or not font_file:
         st.error("⚠️ Upload Bahan Wajib: Video & Font!")
     else:
         try:
-            with st.spinner('Merakit Shorts anti-copyright...'):
+            with st.spinner('Sedang merakit video...'):
                 tfile_bg = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
                 tfile_bg.write(bg_video_file.read())
                 tfile_font = tempfile.NamedTemporaryFile(delete=False, suffix='.ttf')
@@ -203,10 +199,10 @@ if st.button("🚀 Generate Shorts (YouTube Safe)"):
                 output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
                 result_clip.write_videofile(output_path, codec='libx264', audio_codec='aac', fps=24, preset='ultrafast', threads=4, ffmpeg_params=['-pix_fmt', 'yuv420p'])
                 
-                st.success("✅ Shorts Jadi! Upload ke YouTube, kasih #Shorts di judul.")
+                st.success("✅ Shorts Jadi! Cek suara musik & SFX-nya.")
                 st.video(output_path)
                 with open(output_path, "rb") as file:
-                    st.download_button("Download Shorts MP4", file, "shorts_ready.mp4", mime="video/mp4")
+                    st.download_button("Download Shorts MP4", file, "shorts_audio_fix.mp4", mime="video/mp4")
                     
         except Exception as e:
             st.error(f"Error: {e}")
