@@ -15,23 +15,23 @@ from PIL import Image, ImageDraw, ImageFont
 import textwrap
 from io import StringIO
 
-st.set_page_config(page_title="Tiktok Quiz Generator (US Market)", layout="wide")
-st.title("⚡ TikTok Quiz Generator (US Market Ready)")
-st.markdown("Fitur: Support Bahasa Inggris, Visual Ganteng, Encoding Windows.")
+st.set_page_config(page_title="Tiktok Quiz Generator (Ultimate)", layout="wide")
+st.title("⚡ TikTok Quiz Generator (Ultimate Version)")
+st.markdown("Fitur Lengkap: SFX 'Ting', Visual US Market, TTS Bule.")
 
 # --- SIDEBAR ---
 with st.sidebar:
     st.header("1. Konfigurasi")
-    # FITUR BARU: PILIH BAHASA BIAR LOGATNYA BENER
-    tts_lang = st.selectbox("Bahasa Suara (TTS)", ["en", "id"], index=0, help="Pilih 'en' buat target US, 'id' buat Indo.")
+    tts_lang = st.selectbox("Bahasa Suara (TTS)", ["en", "id"], index=0, help="Pilih 'en' buat target US.")
     
     st.header("2. Upload Bahan")
     bg_video_file = st.file_uploader("Upload Background Video (.mp4)", type=["mp4"])
     font_file = st.file_uploader("Upload Font (.ttf) - WAJIB TEBAL", type=["ttf"])
-    music_file = st.file_uploader("Upload Musik (.mp3)", type=["mp3"])
+    music_file = st.file_uploader("Upload Musik Background (.mp3)", type=["mp3"])
+    # FITUR BARU: SFX UPLOADER
+    sfx_file = st.file_uploader("Upload SFX Jawaban 'Ting' (.mp3)", type=["mp3"], help="Suara yang muncul pas jawaban keluar.")
 
 st.header("3. Data Kuis")
-# Contoh default diganti jadi Inggris biar sesuai target market
 example_csv = """Pertanyaan,Pilihan A,Pilihan B,Jawaban Benar
 What is the capital of New York?,New York City,Albany,Albany
 What has keys but no locks?,A Piano,A Map,A Piano"""
@@ -45,7 +45,6 @@ def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer
     img = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
-    # Load Font
     font_loaded = False
     try:
         font = ImageFont.truetype(font_path, fontsize)
@@ -54,15 +53,13 @@ def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer
         font = ImageFont.load_default()
     
     if not font_loaded:
-        st.toast(f"⚠️ Font gagal load, pake default.")
+        st.toast(f"⚠️ Font default dipake (upload font tebal biar bagus).")
 
-    # Text Wrapping Logic
     avg_char_width = fontsize * 0.5 
     if not font_loaded: avg_char_width = fontsize * 0.3
     max_chars = int((video_w * 0.85) / avg_char_width) 
     wrapped_text = textwrap.fill(text, width=max_chars)
 
-    # Calculate Size
     left, top, right, bottom = draw.multiline_textbbox((0, 0), wrapped_text, font=font, align='center')
     text_width = right - left
     text_height = bottom - top
@@ -73,7 +70,6 @@ def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer
     text_x = center_x - (text_width / 2)
     text_y = center_y - (text_height / 2)
 
-    # Box Background
     padding = 25
     box_left = text_x - padding
     box_top = text_y - padding
@@ -87,7 +83,6 @@ def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer
         
     draw.rectangle([box_left, box_top, box_right, box_bottom], fill=box_color, outline=None)
 
-    # Text Shadow & Main
     shadow_offset = 4
     draw.multiline_text((text_x + shadow_offset, text_y + shadow_offset), wrapped_text, font=font, fill='black', align='center')
     draw.multiline_text((text_x, text_y), wrapped_text, font=font, fill='white', align='center')
@@ -98,13 +93,13 @@ def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer
     clip = ImageClip(numpy_img).set_duration(duration)
     return clip
 
-# --- LOGIC UTAMA ---
-def generate_video(row, bg_clip, font_path, music_path, lang_code):
+# --- LOGIC UTAMA (Updated Audio) ---
+def generate_video(row, bg_clip, font_path, music_path, sfx_path, lang_code):
     duration_q = 5
     duration_ans = 2
     total_duration = duration_q + duration_ans
     
-    # 1. Potong Background
+    # 1. Video Cut
     import random
     if bg_clip.duration > total_duration:
         start_t = random.uniform(0, bg_clip.duration - total_duration)
@@ -112,30 +107,43 @@ def generate_video(row, bg_clip, font_path, music_path, lang_code):
     else:
         video = bg_clip.subclip(0, total_duration)
         
-    # 2. Resize & Crop (Fix Ganjil)
+    # Resize Logic
     target_ratio = 9/16
     current_ratio = video.w / video.h
     if current_ratio > target_ratio:
         new_width = int(video.h * target_ratio)
-        if new_width % 2 != 0: new_width -= 1 # Genapkan
+        if new_width % 2 != 0: new_width -= 1
         video = video.crop(x1=video.w/2 - new_width/2, width=new_width, height=video.h)
     video = video.resize(newsize=(1080, 1920)) 
     
-    # 3. Audio TTS (Dinamis sesuai Pilihan Bahasa)
-    # text=str(...) buat jaga-jaga kalau inputnya angka doang
+    # 2. AUDIO MIXING (Bagian SFX di sini)
+    audio_clips = []
+    
+    # a. TTS (Suara Soal)
     tts = gTTS(text=str(row['Pertanyaan']), lang=lang_code)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
         tts.save(fp.name)
-        audio_clip = AudioFileClip(fp.name)
+        tts_clip = AudioFileClip(fp.name)
+        audio_clips.append(tts_clip)
     
+    # b. Background Music (Low Volume)
     if music_path:
         bg_music = AudioFileClip(music_path).subclip(0, total_duration).volumex(0.1)
-        final_audio = CompositeAudioClip([audio_clip, bg_music])
-    else:
-        final_audio = audio_clip
+        audio_clips.append(bg_music)
+        
+    # c. SFX 'Ting' (Start di detik ke-5)
+    if sfx_path:
+        # Load SFX
+        sfx = AudioFileClip(sfx_path)
+        # Set waktu muncul (pas jawaban nongol)
+        sfx = sfx.set_start(duration_q)
+        audio_clips.append(sfx)
+    
+    # Gabung Semua Audio
+    final_audio = CompositeAudioClip(audio_clips)
     video = video.set_audio(final_audio)
 
-    # 4. Visual Teks
+    # 3. Visual Setup
     clip_q = create_text_clip_pil(str(row['Pertanyaan']), font_path, 75, 1080, total_duration)
     clip_q = clip_q.set_position(('center', 350))
     
@@ -151,14 +159,14 @@ def generate_video(row, bg_clip, font_path, music_path, lang_code):
     final = CompositeVideoClip([video, clip_q, clip_a, clip_b, clip_c])
     return final
 
-# --- TOMBOL EKSEKUSI ---
-if st.button("🚀 Generate Video (US Market)"):
+# --- EKSEKUSI ---
+if st.button("🚀 Generate Video (With SFX)"):
     if not bg_video_file or not font_file:
-        st.error("⚠️ Upload dulu Video Background & Font-nya Bos!")
+        st.error("⚠️ Upload Bahan Wajib: Video & Font!")
     else:
         try:
-            with st.spinner('Sedang merakit video untuk pasar US...'):
-                # 1. Simpan File Upload ke Temp
+            with st.spinner('Meracik video dengan bumbu SFX...'):
+                # 1. Save Uploaded Files
                 tfile_bg = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
                 tfile_bg.write(bg_video_file.read())
                 
@@ -170,28 +178,31 @@ if st.button("🚀 Generate Video (US Market)"):
                     tfile_music = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
                     tfile_music.write(music_file.read())
                     music_path = tfile_music.name
+                    
+                sfx_path = None
+                if sfx_file:
+                    tfile_sfx = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
+                    tfile_sfx.write(sfx_file.read())
+                    sfx_path = tfile_sfx.name
                 
-                # 2. Baca Data CSV (Dengan Error Handling)
+                # 2. Read Data
                 try:
                     df = pd.read_csv(StringIO(quiz_data_text))
-                    # Bersihkan spasi di nama kolom biar gak error key error
                     df.columns = [c.strip() for c in df.columns]
-                except Exception as e:
-                    st.error(f"❌ Format CSV Salah! Cek koma-komanya. Error: {e}")
+                except:
+                    st.error("❌ Format CSV Salah.")
+                    st.stop()
+                
+                if df.empty:
                     st.stop()
 
-                if df.empty:
-                    st.error("❌ Data kosong Bos! Masukin dulu pertanyaannya.")
-                    st.stop()
-                    
-                # 3. Proses Baris Pertama
+                # 3. Generate
                 bg_clip = VideoFileClip(tfile_bg.name)
                 first_row = df.iloc[0] 
                 
-                # Kirim parameter bahasa (tts_lang) ke fungsi
-                result_clip = generate_video(first_row, bg_clip, tfile_font.name, music_path, tts_lang)
+                result_clip = generate_video(first_row, bg_clip, tfile_font.name, music_path, sfx_path, tts_lang)
                 
-                # 4. Render output
+                # 4. Render
                 output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
                 result_clip.write_videofile(
                     output_path, 
@@ -200,15 +211,14 @@ if st.button("🚀 Generate Video (US Market)"):
                     fps=24, 
                     preset='ultrafast', 
                     threads=4,
-                    ffmpeg_params=['-pix_fmt', 'yuv420p'] # Wajib buat Windows/TikTok
+                    ffmpeg_params=['-pix_fmt', 'yuv420p']
                 )
                 
-                # 5. Tampilkan
-                st.success("✅ Video Jadi! Siap guncang pasar US!")
+                st.success("✅ Video Jadi! Ada bunyi 'Ting'-nya gak?")
                 st.video(output_path)
                 
                 with open(output_path, "rb") as file:
-                    st.download_button("Download Video MP4", file, "quiz_us_ready.mp4", mime="video/mp4")
+                    st.download_button("Download Video MP4", file, "quiz_with_sfx.mp4", mime="video/mp4")
                     
         except Exception as e:
-            st.error(f"Error tak terduga: {e}")
+            st.error(f"Error: {e}")
