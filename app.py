@@ -1,261 +1,160 @@
 import streamlit as st
-import edge_tts
-import asyncio
-from moviepy.editor import VideoFileClip, AudioFileClip, CompositeVideoClip, ImageClip
-from moviepy.video.tools.subtitles import SubtitlesClip
-from groq import Groq
+import pandas as pd
+from moviepy.editor import *
+from moviepy.config import change_settings
+from gtts import gTTS
+import tempfile
 import os
-import time
-import json
-import re
-import PIL.Image
-from PIL import ImageDraw, ImageFont
-import numpy as np
-import yt_dlp
 
-# --- 🛠️ FIX BUG MOVIEPY ---
-if not hasattr(PIL.Image, 'ANTIALIAS'):
-    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
+# --- KONFIGURASI IMAGEMAGICK (PENTING BUAT CLOUD) ---
+# Di Streamlit Cloud, biasanya ImageMagick ada di path ini
+if os.path.exists("/usr/bin/convert"):
+    change_settings({"IMAGEMAGICK_BINARY": "/usr/bin/convert"})
 
-# --- SETUP HALAMAN ---
-st.set_page_config(page_title="AI Reddit Storyteller", page_icon="💀", layout="wide")
+st.set_page_config(page_title="Tiktok Quiz Generator by M", layout="wide")
 
-st.markdown("""
-<style>
-    .stApp { background-color: #0E1117; color: #E0E0E0; }
-    h1 { color: #FF5252; text-align: center; font-family: 'Courier New', monospace; }
-    .stTextArea textarea { background-color: #1E1E1E; color: white; }
-    .stButton>button { width: 100%; font-weight: bold; border-radius: 8px; }
-    .success-box { padding: 15px; background-color: #1B5E20; border-radius: 10px; }
-</style>
-""", unsafe_allow_html=True)
+st.title("⚡ TikTok Quiz Generator (Cloud Version)")
+st.markdown("Upload bahan, klik generate, jadi duit.")
 
-st.title("💀 AI REDDIT STORYTELLER")
-st.caption("Teks Cerita -> Video Shorts Viral (Minecraft Gameplay + TTS)")
-
-# --- KONFIGURASI ---
-DEFAULT_API_KEY = "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" 
-
-if 'data' not in st.session_state:
-    st.session_state.data = {}
-
-# --- SIDEBAR ---
+# --- SIDEBAR: UPLOAD BAHAN BAKU ---
 with st.sidebar:
-    st.header("⚙️ Konfigurasi")
+    st.header("1. Upload Bahan")
     
-    # 1. API Key
-    custom_key = st.text_input("🔑 API Key Groq (Opsional)", type="password")
-    active_key = custom_key if custom_key else DEFAULT_API_KEY
+    # Upload Background Video
+    bg_video_file = st.file_uploader("Upload Background Video (.mp4)", type=["mp4"])
     
-    st.markdown("---")
+    # Upload Font (WAJIB biar gak error di Linux)
+    font_file = st.file_uploader("Upload Font (.ttf)", type=["ttf"])
     
-    # 2. Pilih Suara
-    st.subheader("🎙️ Suara Narator")
-    voice_option = st.selectbox("Pilih Karakter Suara:", [
-        ("en-US-ChristopherNeural", "Cowok (Deep/Thriller)"),
-        ("en-US-AnaNeural", "Cewek (Lembut)"),
-        ("en-US-EricNeural", "Cowok (Casual)"),
-        ("en-GB-SoniaNeural", "Cewek (British Accent)")
-    ])
-    selected_voice = voice_option[0]
+    # Upload Musik (Opsional)
+    music_file = st.file_uploader("Upload Musik (.mp3)", type=["mp3"])
 
-    st.markdown("---")
-    
-    # 3. Background Video
-    st.subheader("🎮 Background Gameplay")
-    bg_file = st.file_uploader("Upload Video (Minecraft/GTA)", type=["mp4"])
-    
-    if st.button("⬇️ Download Stok Minecraft (Gratis)"):
-        with st.spinner("Mendownload Gameplay No-Copyright..."):
-            try:
-                # Link video Minecraft Parkour No Copyright
-                stock_url = "https://www.youtube.com/watch?v=n_Dv4JMiwK8" 
-                ydl_opts = {
-                    'format': 'best[height<=720][ext=mp4]',
-                    'outtmpl': 'background_gameplay.mp4',
-                    'quiet': True
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([stock_url])
-                st.success("✅ Background Siap! (background_gameplay.mp4)")
-                st.session_state.has_bg = True
-            except Exception as e:
-                st.error(f"Gagal download: {e}")
+# --- KOLOM UTAMA: DATA KUIS ---
+st.header("2. Data Kuis")
 
-# --- FUNGSI 1: AI REWRITE (BIKIN NASKAH) ---
-def rewrite_story(raw_text, api_key):
-    client = Groq(api_key=api_key)
-    prompt = """
-    You are a professional TikTok storyteller.
-    Rewrite the following Reddit story into a script for a 60-second viral video.
-    
-    RULES:
-    1. Language: English (Engaging & Suspenseful).
-    2. Hook: Start with a crazy hook line immediately.
-    3. Structure: No "Intro/Outro". Just the story.
-    4. Length: Approx 150-180 words (for 1 minute speech).
-    5. Clean text only, no emojis, no hashtags.
-    
-    STORY:
-    """ + raw_text[:5000]
-    
-    try:
-        completion = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="llama-3.1-8b-instant",
-            temperature=0.7
-        )
-        return completion.choices[0].message.content
-    except Exception as e:
-        return f"Error AI: {str(e)}"
+# Template CSV
+example_csv = """Pertanyaan,Pilihan A,Pilihan B,Jawaban Benar
+Apa warna pisang?,Kuning,Biru,Kuning
+Ibukota Indonesia?,Jakarta,Bandung,Jakarta"""
 
-# --- FUNGSI 2: TTS (TEXT TO SPEECH) ---
-async def generate_tts(text, voice, output_file="narration.mp3"):
-    communicate = edge_tts.Communicate(text, voice)
-    await communicate.save(output_file)
-    return output_file
+quiz_data_text = st.text_area("Masukkan Data Kuis (Format CSV: Pertanyaan, A, B, Jawaban)", value=example_csv, height=150)
 
-# --- FUNGSI 3: GENERATOR SUBTITLE POP-UP ---
-def pil_word_generator(txt):
-    video_width = 720
-    canvas_height = 200 
-    font_size = 75 # Gedein lagi biar jelas di HP
-    stroke_width = 8
+# --- FUNGSI GENERATOR ---
+def generate_video(row, bg_clip, font_path, music_path):
+    # Setup Durasi
+    duration_q = 5 # Detik pertanyaan muncul
+    duration_ans = 2 # Detik jawaban muncul
+    total_duration = duration_q + duration_ans
     
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
-    except:
-        font = ImageFont.load_default()
+    # 1. Potong Background (Random Start biar unik)
+    import random
+    if bg_clip.duration > total_duration:
+        start_t = random.uniform(0, bg_clip.duration - total_duration)
+        video = bg_clip.subclip(start_t, start_t + total_duration)
+    else:
+        video = bg_clip.subclip(0, total_duration) # Kalau video pendek, ambil dari awal
+    
+    # Resize ke 9:16 (Shorts) kalau belum
+    target_ratio = 9/16
+    current_ratio = video.w / video.h
+    
+    # Simple Center Crop
+    if current_ratio > target_ratio:
+        new_width = int(video.h * target_ratio)
+        video = video.crop(x1=video.w/2 - new_width/2, width=new_width, height=video.h)
+    
+    video = video.resize(height=1920) # Paksa HD
+    
+    # 2. Bikin Audio Pertanyaan (Text to Speech)
+    tts = gTTS(text=row['Pertanyaan'], lang='id') # Ganti 'en' kalau mau Inggris
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+        tts.save(fp.name)
+        audio_clip = AudioFileClip(fp.name)
+    
+    # Gabung Audio TTS + Musik Background
+    if music_path:
+        bg_music = AudioFileClip(music_path).subclip(0, total_duration).volumex(0.1) # Volume kecil
+        final_audio = CompositeAudioClip([audio_clip, bg_music])
+    else:
+        final_audio = audio_clip
+        
+    video = video.set_audio(final_audio)
 
-    img = PIL.Image.new('RGBA', (video_width, canvas_height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
+    # 3. Bikin Teks (Layering)
+    # Style Teks
+    txt_color = 'white'
+    stroke_color = 'black'
+    stroke_width = 3
+    fontsize = 70
     
-    bbox = draw.textbbox((0, 0), txt, font=font)
-    text_w = bbox[2] - bbox[0]
-    text_h = bbox[3] - bbox[1]
+    # Clip Pertanyaan
+    txt_q = TextClip(row['Pertanyaan'], font=font_path, fontsize=fontsize, color=txt_color, 
+                     stroke_color=stroke_color, stroke_width=stroke_width, method='caption', 
+                     size=(video.w*0.9, None)).set_position(('center', 400)).set_duration(total_duration)
     
-    x_pos = (video_width - text_w) / 2
-    y_pos = (canvas_height - text_h) / 2
-    
-    # Stroke Hitam Tebal
-    for adj_x in range(-stroke_width, stroke_width+1):
-        for adj_y in range(-stroke_width, stroke_width+1):
-             draw.text((x_pos+adj_x, y_pos+adj_y), txt, font=font, fill="black")
-    
-    # Teks Putih (Warna khas Reddit Stories)
-    draw.text((x_pos, y_pos), txt, font=font, fill="white")
-    
-    return ImageClip(np.array(img))
+    # Clip Pilihan A
+    txt_a = TextClip(f"A. {row['Pilihan A']}", font=font_path, fontsize=60, color='white', 
+                     stroke_color='black', stroke_width=2, method='caption',
+                     size=(video.w*0.8, None)).set_position(('center', 900)).set_duration(total_duration)
 
-# --- FUNGSI 4: EDITOR VIDEO OTOMATIS ---
-def create_reddit_video(script_text, audio_path, bg_video_path, output_name):
-    try:
-        # 1. Load Audio
-        audio_clip = AudioFileClip(audio_path)
-        duration = audio_clip.duration
-        
-        # 2. Load Background & Loop if necessary
-        bg_clip = VideoFileClip(bg_video_path)
-        
-        # Potong background random biar gak bosen (start dari detik random)
-        import random
-        max_start = max(0, bg_clip.duration - duration - 5)
-        random_start = random.uniform(0, max_start)
-        
-        bg_clip = bg_clip.subclip(random_start, random_start + duration)
-        
-        # Resize ke 9:16 (720x1280) - Center Crop
-        w, h = bg_clip.size
-        target_ratio = 9/16
-        new_w = h * target_ratio
-        if new_w <= w:
-             bg_clip = bg_clip.crop(x1=w/2 - new_w/2, width=new_w, height=h)
-        bg_clip = bg_clip.resize(newsize=(720, 1280))
-        
-        # Set Audio
-        final_video = bg_clip.set_audio(audio_clip)
-        
-        # 3. Generate Subtitle (Estimasi Waktu)
-        words = script_text.replace('\n', ' ').split()
-        time_per_word = duration / len(words)
-        
-        subs_data = []
-        current_time = 0
-        
-        for word in words:
-            # Bersihkan kata dari tanda baca aneh
-            clean_word = re.sub(r'[^\w\s\']', '', word).upper()
-            if clean_word:
-                start = current_time
-                end = current_time + time_per_word
-                subs_data.append(((start, end), clean_word))
-            current_time += time_per_word
-            
-        # Burn Subtitles
-        subtitles = SubtitlesClip(subs_data, pil_word_generator)
-        subtitles = subtitles.set_position(('center', 'center'))
-        
-        final_result = CompositeVideoClip([final_video, subtitles])
-        
-        # Render
-        final_result.write_videofile(output_name, codec='libx264', audio_codec='aac', preset='ultrafast', fps=24)
-        return True, None
-
-    except Exception as e:
-        return False, str(e)
-
-# --- UI UTAMA ---
-col_left, col_right = st.columns([1, 1])
-
-with col_left:
-    st.subheader("1. Masukkan Cerita")
-    raw_story = st.text_area("Paste Cerita Reddit Disini (Bahasa Inggris/Indo):", height=300, placeholder="I found a secret door in my basement...")
+    # Clip Pilihan B
+    txt_b = TextClip(f"B. {row['Pilihan B']}", font=font_path, fontsize=60, color='white', 
+                     stroke_color='black', stroke_width=2, method='caption',
+                     size=(video.w*0.8, None)).set_position(('center', 1100)).set_duration(total_duration)
     
-    if st.button("✨ PROSES NASKAH (AI)"):
-        if not raw_story:
-            st.error("Isi ceritanya dulu Bos!")
-        else:
-            with st.spinner("AI sedang merangkum cerita..."):
-                script = rewrite_story(raw_story, active_key)
-                st.session_state.data['script'] = script
-                st.success("Naskah Jadi!")
+    # Clip Jawaban (Muncul belakangan)
+    txt_correct = TextClip(f"Jawab: {row['Jawaban Benar']}", font=font_path, fontsize=80, color='green', 
+                           stroke_color='white', stroke_width=3, method='caption',
+                           size=(video.w*0.9, None)).set_position(('center', 1400)).set_start(duration_q).set_duration(duration_ans)
 
-with col_right:
-    st.subheader("2. Preview & Render")
-    
-    # Edit Naskah Manual jika perlu
-    if 'script' in st.session_state.data:
-        final_script = st.text_area("Naskah Final (Bisa diedit):", value=st.session_state.data['script'], height=200)
-        
-        # Cek Background
-        bg_path = None
-        if bg_file:
-            with open("temp_bg.mp4", "wb") as f: f.write(bg_file.getbuffer())
-            bg_path = "temp_bg.mp4"
-        elif os.path.exists("background_gameplay.mp4"):
-            bg_path = "background_gameplay.mp4"
-        
-        if st.button("🎬 RENDER VIDEO SHORTS"):
-            if not bg_path:
-                st.error("⚠️ Background Video belum ada! Upload atau klik tombol 'Download Stok' di sidebar.")
-            else:
-                out_file = f"Reddit_Story_{int(time.time())}.mp4"
+    # Composite (Tumpuk semua layer)
+    final = CompositeVideoClip([video, txt_q, txt_a, txt_b, txt_correct])
+    return final
+
+# --- TOMBOL EKSEKUSI ---
+if st.button("🚀 Generate Video"):
+    if not bg_video_file or not font_file:
+        st.error("Woi Bos! Upload dulu Video Background sama Font-nya!")
+    else:
+        try:
+            with st.spinner('Lagi masak video... sabar ya...'):
+                # Simpan file upload ke temp biar bisa dibaca MoviePy
+                tfile_bg = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+                tfile_bg.write(bg_video_file.read())
                 
-                # 1. Generate Audio
-                with st.spinner("🎙️ Membuat Suara Narator..."):
-                    asyncio.run(generate_tts(final_script, selected_voice))
+                tfile_font = tempfile.NamedTemporaryFile(delete=False, suffix='.ttf')
+                tfile_font.write(font_file.read())
                 
-                # 2. Render Video
-                with st.spinner("🔥 Menggabungkan Video & Subtitle..."):
-                    success, err = create_reddit_video(final_script, "narration.mp3", bg_path, out_file)
+                music_path = None
+                if music_file:
+                    tfile_music = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
+                    tfile_music.write(music_file.read())
+                    music_path = tfile_music.name
                 
-                if success:
-                    st.success("✅ VIDEO JADI BOS!")
-                    st.video(out_file)
-                    with open(out_file, "rb") as f:
-                        st.download_button("⬇️ DOWNLOAD MP4", f, file_name=out_file)
-                    # Cleanup
-                    try: os.remove("narration.mp3"); os.remove(out_file)
-                    except: pass
-                else:
-                    st.error(f"Gagal Render: {err}")
+                # Load Video Utama
+                bg_clip = VideoFileClip(tfile_bg.name)
+                
+                # Parse Data CSV
+                from io import StringIO
+                df = pd.read_csv(StringIO(quiz_data_text))
+                
+                # Generate Row Pertama Aja (Buat Test Drive)
+                # Kalo mau loop semua, nanti kita update lagi. Skrg 1 dulu biar cepet.
+                first_row = df.iloc[0]
+                
+                result_clip = generate_video(first_row, bg_clip, tfile_font.name, music_path)
+                
+                # Render ke file
+                output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
+                result_clip.write_videofile(output_path, codec='libx264', audio_codec='aac', fps=24, preset='ultrafast', threads=4)
+                
+                # Tampilin
+                st.success("✅ Video Jadi Bos!")
+                st.video(output_path)
+                
+                # Tombol Download
+                with open(output_path, "rb") as file:
+                    st.download_button("Download Video MP4", file, "quiz_result.mp4", mime="video/mp4")
+                    
+        except Exception as e:
+            st.error(f"Gagal Bos: {e}")
