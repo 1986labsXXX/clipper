@@ -7,7 +7,8 @@ if not hasattr(PIL.Image, 'ANTIALIAS'):
 
 import pandas as pd
 from moviepy.editor import *
-from gtts import gTTS
+import edge_tts 
+import asyncio 
 import tempfile
 import os
 import numpy as np
@@ -15,26 +16,51 @@ from PIL import Image, ImageDraw, ImageFont
 import textwrap
 from io import StringIO
 
-st.set_page_config(page_title="Shorts Factory (Safe Mode)", layout="wide")
-st.title("🛠️ YouTube Shorts Generator (Safe Mode)")
-st.markdown("Mode perbaikan: Audio handling lebih aman + Error Detector.")
+st.set_page_config(page_title="Survival Shorts Maker", layout="wide")
+st.title("💀 Survival Shorts Maker (Christopher Voice)")
+st.markdown("Fitur: **Suara Cowok Deep** + **Pilih Nomor Soal**.")
 
 # --- SIDEBAR ---
 with st.sidebar:
     st.header("1. Konfigurasi")
-    tts_lang = st.selectbox("Bahasa Suara (TTS)", ["en", "id"], index=0)
+    st.info("🎙️ Voice Active: Christopher (Male/Deep)")
     
     st.header("2. Upload Bahan")
     bg_video_file = st.file_uploader("Upload Background Video (.mp4)", type=["mp4"])
-    font_file = st.file_uploader("Upload Font (.ttf)", type=["ttf"])
-    music_file = st.file_uploader("Upload Musik (.mp3)", type=["mp3"])
-    sfx_file = st.file_uploader("Upload SFX 'Ting' (.mp3)", type=["mp3"])
+    font_file = st.file_uploader("Upload Font (.ttf) - WAJIB TEBAL", type=["ttf"])
+    music_file = st.file_uploader("Upload Musik Horror (.mp3)", type=["mp3"])
+    sfx_file = st.file_uploader("Upload SFX Jumpscare (.mp3)", type=["mp3"])
 
-st.header("3. Data Kuis")
+st.header("3. Data Kuis (Survival/Horror)")
 example_csv = """Pertanyaan,Pilihan A,Pilihan B,Jawaban Benar
-Capital of New York?,New York City,Albany,Albany
-What has keys but no locks?,A Piano,A Map,A Piano"""
-quiz_data_text = st.text_area("Masukkan Data Kuis", value=example_csv, height=150)
+You wake up in a coffin.,Scream for help,Stay calm & conserve oxygen,Stay calm & conserve oxygen
+A rabid dog chases you!,Run away,Stand ground & yell,Stand ground & yell"""
+quiz_data_text = st.text_area("Paste SEMUA CSV lo di sini (50 baris gass!)", value=example_csv, height=150)
+
+# --- PILIH SOAL ---
+df = pd.DataFrame() # Inisialisasi kosong
+try:
+    df = pd.read_csv(StringIO(quiz_data_text))
+    df.columns = [c.strip() for c in df.columns]
+except:
+    pass
+
+total_soal = len(df) if not df.empty else 1
+st.write("---")
+col1, col2 = st.columns([1, 3])
+with col1:
+    # FITUR PILIH NOMOR SOAL BIAR GAK CRASH RENDER BANYAK
+    nomor_soal = st.number_input(f"Pilih Soal Nomor Berapa? (1 - {total_soal})", min_value=1, max_value=total_soal, value=1)
+with col2:
+    if not df.empty and nomor_soal <= len(df):
+        preview_soal = df.iloc[nomor_soal-1]['Pertanyaan']
+        st.info(f"📝 Preview Soal {nomor_soal}: **{preview_soal}**")
+
+# --- FUNGSI SUARA (CHRISTOPHER) ---
+async def get_edge_voice(text, filename):
+    # KITA PAKSA SUARA COWOK DI SINI
+    communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural")
+    await communicate.save(filename)
 
 # --- FUNGSI VISUAL ---
 def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer=False):
@@ -57,15 +83,18 @@ def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer
     center_y = H / 2
     text_x = center_x - (text_width / 2)
     text_y = center_y - (text_height / 2)
+    
     padding = 25
     box_left = text_x - padding
     box_top = text_y - padding
     box_right = text_x + text_width + padding
     box_bottom = text_y + text_height + padding
+    
     if is_answer:
-        box_color = (0, 150, 0, 200)
+        box_color = (139, 0, 0, 200) # Merah Darah
     else:
-        box_color = (0, 0, 0, 130)
+        box_color = (0, 0, 0, 180) # Hitam Pekat
+        
     draw.rectangle([box_left, box_top, box_right, box_bottom], fill=box_color, outline=None)
     shadow_offset = 4
     draw.multiline_text((text_x + shadow_offset, text_y + shadow_offset), wrapped_text, font=font, fill='black', align='center')
@@ -75,20 +104,19 @@ def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer
     clip = ImageClip(numpy_img).set_duration(duration)
     return clip
 
-# --- LOGIC UTAMA (SAFE MODE) ---
-def generate_video(row, bg_clip, font_path, music_path, sfx_path, lang_code, status_placeholder):
-    duration_q = 10
-    duration_ans = 4
+# --- LOGIC UTAMA ---
+def generate_video(row, bg_clip, font_path, music_path, sfx_path, status_placeholder):
+    duration_q = 9  
+    duration_ans = 3
     total_duration = duration_q + duration_ans
     
-    # 1. Video Check
-    status_placeholder.text("⏳ Memotong Video Background...")
+    # 1. Visual BG
+    status_placeholder.text("🌑 Menyiapkan Video...")
     import random
     if bg_clip.duration > total_duration:
         start_t = random.uniform(0, bg_clip.duration - total_duration)
         video = bg_clip.subclip(start_t, start_t + total_duration)
     else:
-        # Kalau video kependekan, kita loop
         video = bg_clip.loop(duration=total_duration)
         
     target_ratio = 9/16
@@ -99,71 +127,63 @@ def generate_video(row, bg_clip, font_path, music_path, sfx_path, lang_code, sta
         video = video.crop(x1=video.w/2 - new_width/2, width=new_width, height=video.h)
     video = video.resize(newsize=(1080, 1920)) 
     
-    # 2. Audio Processing (SAFE MODE)
-    status_placeholder.text("🔊 Memproses Audio & TTS...")
+    # 2. Audio (CHRISTOPHER)
+    status_placeholder.text("🎙️ Christopher take voice over...")
     audio_clips = []
     
-    # TTS
-    try:
-        tts = gTTS(text=str(row['Pertanyaan']), lang=lang_code)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
-            tts.save(fp.name)
-            tts_clip = AudioFileClip(fp.name)
-            audio_clips.append(tts_clip)
-    except Exception as e:
-        st.warning(f"Gagal generate suara TTS: {e}")
+    tts_filename = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
+    asyncio.run(get_edge_voice(str(row['Pertanyaan']), tts_filename))
     
-    # Music (ANTI CRASH: Cek Durasi)
+    tts_clip = AudioFileClip(tts_filename)
+    audio_clips.append(tts_clip)
+    
     if music_path:
         try:
             m_clip = AudioFileClip(music_path)
-            # Ambil durasi terpendek (biar gak error out of bounds)
             cut_duration = min(m_clip.duration, total_duration)
-            if cut_duration > 0:
-                bg_music = m_clip.subclip(0, cut_duration).volumex(0.3)
-                audio_clips.append(bg_music)
-        except Exception as e:
-            st.warning(f"Musik skip (Error): {e}")
+            bg_music = m_clip.subclip(0, cut_duration).volumex(0.4) 
+            audio_clips.append(bg_music)
+        except: pass
         
-    # SFX
     if sfx_path:
         try:
             s_clip = AudioFileClip(sfx_path)
             sfx = s_clip.set_start(duration_q)
             audio_clips.append(sfx)
-        except Exception as e:
-            st.warning(f"SFX skip (Error): {e}")
+        except: pass
     
     if audio_clips:
         final_audio = CompositeAudioClip(audio_clips).set_duration(total_duration)
         video = video.set_audio(final_audio)
 
-    # 3. Visual Layout
-    status_placeholder.text("🎨 Menyusun Teks Visual...")
+    # 3. Text Overlay
+    status_placeholder.text("💀 Merakit Visual...")
     clip_q = create_text_clip_pil(str(row['Pertanyaan']), font_path, 75, 1080, total_duration)
-    clip_q = clip_q.set_position(('center', 300))
+    clip_q = clip_q.set_position(('center', 350))
+    
     clip_a = create_text_clip_pil(f"A. {row['Pilihan A']}", font_path, 65, 1080, total_duration)
-    clip_a = clip_a.set_position(('center', 850))
+    clip_a = clip_a.set_position(('center', 900))
+    
     clip_b = create_text_clip_pil(f"B. {row['Pilihan B']}", font_path, 65, 1080, total_duration)
-    clip_b = clip_b.set_position(('center', 1100))
+    clip_b = clip_b.set_position(('center', 1150))
+    
     clip_c = create_text_clip_pil(f"Answer: {row['Jawaban Benar']}", font_path, 85, 1080, duration_ans, is_answer=True)
-    clip_c = clip_c.set_start(duration_q).set_position(('center', 1350))
+    clip_c = clip_c.set_start(duration_q).set_position(('center', 1450))
 
     final = CompositeVideoClip([video, clip_q, clip_a, clip_b, clip_c])
     return final
 
 # --- EKSEKUSI ---
-if st.button("🚀 Generate (Debug Mode)"):
-    status_text = st.empty() # Placeholder buat status
+if st.button("💀 Generate Video Soal Ini"):
+    status_text = st.empty()
     
     if not bg_video_file or not font_file:
-        st.error("⚠️ Upload Bahan Wajib: Video & Font!")
+        st.error("⚠️ Bahan belum lengkap Bos!")
     else:
         try:
-            status_text.text("📂 Membaca file upload...")
+            # Load Files
             tfile_bg = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
             tfile_bg.write(bg_video_file.read())
-            
             tfile_font = tempfile.NamedTemporaryFile(delete=False, suffix='.ttf')
             tfile_font.write(font_file.read())
             
@@ -179,22 +199,20 @@ if st.button("🚀 Generate (Debug Mode)"):
                 tfile_sfx.write(sfx_file.read())
                 sfx_path = tfile_sfx.name
             
-            # Cek CSV
-            try:
-                df = pd.read_csv(StringIO(quiz_data_text))
-                df.columns = [c.strip() for c in df.columns]
-                if df.empty: raise ValueError("Data kosong")
-            except Exception as e:
-                st.error(f"❌ Masalah di Data Kuis: {e}")
+            if df.empty:
+                st.error("Data CSV Kosong!")
                 st.stop()
 
+            # --- AMBIL BARIS SESUAI NOMOR YANG DIPILIH ---
+            row_index = nomor_soal - 1
+            selected_row = df.iloc[row_index]
+            
             bg_clip = VideoFileClip(tfile_bg.name)
-            first_row = df.iloc[0] 
             
-            # Generate dengan status update
-            result_clip = generate_video(first_row, bg_clip, tfile_font.name, music_path, sfx_path, tts_lang, status_text)
+            # Generate
+            result_clip = generate_video(selected_row, bg_clip, tfile_font.name, music_path, sfx_path, status_text)
             
-            status_text.text("🎬 Sedang Rendering (Sabar ya, ini agak berat)...")
+            status_text.text("🩸 Rendering... (Tunggu bentar)")
             output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
             result_clip.write_videofile(
                 output_path, 
@@ -206,12 +224,14 @@ if st.button("🚀 Generate (Debug Mode)"):
                 ffmpeg_params=['-pix_fmt', 'yuv420p']
             )
             
-            status_text.text("✅ Selesai!")
-            st.success("✅ Video Jadi! Cek di bawah.")
+            status_text.text("✅ Jadi!")
+            st.success(f"✅ Video Soal {nomor_soal} Selesai!")
             st.video(output_path)
+            
+            # Nama file download dinamis
+            safe_filename = f"survival_quiz_{nomor_soal}.mp4"
             with open(output_path, "rb") as file:
-                st.download_button("Download Video", file, "quiz_safe_mode.mp4", mime="video/mp4")
+                st.download_button(f"Download Video Soal {nomor_soal}", file, safe_filename, mime="video/mp4")
                 
         except Exception as e:
-            st.error("❌ TERJADI ERROR DI SINI:")
-            st.exception(e) # Ini bakal nampilin detail errornya
+            st.error(f"Error: {e}")
