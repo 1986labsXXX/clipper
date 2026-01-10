@@ -77,8 +77,8 @@ def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer
 
 # --- LOGIC UTAMA (SAFE MODE) ---
 def generate_video(row, bg_clip, font_path, music_path, sfx_path, lang_code, status_placeholder):
-    duration_q = 6
-    duration_ans = 2
+    duration_q = 10
+    duration_ans = 4
     total_duration = duration_q + duration_ans
     
     # 1. Video Check
