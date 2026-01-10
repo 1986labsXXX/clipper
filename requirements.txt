@@ -1,9 +1,7 @@
 streamlit
-yt-dlp
-moviepy<2.0
-groq
-edge-tts
-asyncio
-numpy<2.0.0
-Pillow
+moviepy==1.0.3
+pandas
+gTTS
+numpy<1.25.0
+imageio==2.31.1
 imageio-ffmpeg
