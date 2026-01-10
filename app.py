@@ -18,8 +18,12 @@ import textwrap
 from io import StringIO
 
 st.set_page_config(page_title="Survival Shorts Maker", layout="wide")
-st.title("💀 Survival Shorts Maker (UX Optimized)")
-st.markdown("Revisi: **Tombol Download di Atas** + Auto-Naming.")
+st.title("💀 Survival Shorts Maker (Fix 0-Byte Download)")
+
+# --- PASTIKAN FOLDER OUTPUT ADA ---
+OUTPUT_DIR = "outputs"
+if not os.path.exists(OUTPUT_DIR):
+    os.makedirs(OUTPUT_DIR)
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -50,7 +54,6 @@ def clean_filename(text):
 st.header("3. Data Kuis")
 quiz_data_text = st.text_area("Paste CSV lo di sini", height=150)
 
-# --- LOAD DATA ---
 df = pd.DataFrame() 
 if quiz_data_text:
     try:
@@ -64,7 +67,7 @@ if not df.empty:
     base_name = clean_filename(str(selected_row['Pertanyaan']))
     final_filename = f"{base_name}.mp4"
 
-# --- ASYNC & VIDEO LOGIC ---
+# --- CORE FUNCTIONS ---
 async def get_edge_voice(text, filename, voice_id):
     communicate = edge_tts.Communicate(text, voice_id, rate="-10%", volume="+20%")
     await communicate.save(filename)
@@ -84,63 +87,72 @@ def create_text_clip_pil(text, font_path, fontsize, video_w, duration, is_answer
     draw.multiline_text((text_x, text_y), wrapped_text, font=font, fill='white', align='center')
     return ImageClip(np.array(img.crop((0, int(text_y-35), W, int(text_y+(b-t)+35))))).set_duration(duration)
 
-def generate_video_logic(row, bg_clip, font_path, music_path, sfx_path, voice_id):
-    dq, da = 9, 3
-    total = dq + da
-    video = bg_clip.subclip(0, total).resize(height=1920).crop(x_center=bg_clip.w/2, width=1080, height=1920)
-    tts_f = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
-    asyncio.run(get_edge_voice(str(row['Pertanyaan']), tts_f, voice_id))
-    audio = [AudioFileClip(tts_f)]
-    if music_path: audio.append(AudioFileClip(music_path).subclip(0, total).volumex(0.4))
-    if sfx_path: audio.append(AudioFileClip(sfx_path).set_start(dq))
-    video = video.set_audio(CompositeAudioClip(audio).set_duration(total))
-    q = create_text_clip_pil(row['Pertanyaan'], font_path, 75, 1080, total).set_position(('center', 350))
-    a = create_text_clip_pil(f"A. {row['Pilihan A']}", font_path, 65, 1080, total).set_position(('center', 900))
-    b = create_text_clip_pil(f"B. {row['Pilihan B']}", font_path, 65, 1080, total).set_position(('center', 1150))
-    ans = create_text_clip_pil(f"Answer: {row['Jawaban Benar']}", font_path, 85, 1080, da, True).set_start(dq).set_position(('center', 1450))
-    return CompositeVideoClip([video, q, a, b, ans])
-
-# --- TOMBOL GENERATE & PLACEHOLDER DOWNLOAD ---
+# --- GENERATE BUTTON & DOWNLOAD AT TOP ---
 st.write("---")
-# Kita siapin tempat buat tombol download biar muncul di atas
 download_placeholder = st.empty()
 
-if st.button("💀 Generate Video", type="secondary", use_container_width=True):
+if st.button("💀 Generate Video", use_container_width=True):
     if not bg_video_file or not font_file or df.empty:
         st.error("Bahan belum lengkap!")
     else:
         with st.spinner(f"Rendering: {final_filename}..."):
+            # Simpan input ke file sementara
             t_bg = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
             t_bg.write(bg_video_file.read())
+            t_bg.close()
+
             f_path = tempfile.NamedTemporaryFile(delete=False, suffix='.ttf')
             f_path.write(font_file.read())
-            m_path = None
+            f_path.close()
+
+            # Proses Video
+            dq, da = 10, 4
+            total = dq + da
+            bg_clip = VideoFileClip(t_bg.name)
+            video = bg_clip.subclip(0, total).resize(height=1920).crop(x_center=bg_clip.w/2, width=1080, height=1920)
+            
+            # Voice
+            tts_f = os.path.join(OUTPUT_DIR, "temp_voice.mp3")
+            asyncio.run(get_edge_voice(str(selected_row['Pertanyaan']), tts_f, selected_voice))
+            audio_clips = [AudioFileClip(tts_f)]
+            
             if music_file:
                 t_m = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
                 t_m.write(music_file.read())
-                m_path = t_m.name
-            s_path = None
+                t_m.close()
+                audio_clips.append(AudioFileClip(t_m.name).subclip(0, total).volumex(0.4))
+            
             if sfx_file:
                 t_s = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
                 t_s.write(sfx_file.read())
-                s_path = t_s.name
-
-            clip = generate_video_logic(selected_row, VideoFileClip(t_bg.name), f_path.name, m_path, s_path, selected_voice)
-            out = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
-            clip.write_videofile(out, codec='libx264', audio_codec='aac', fps=24, preset='ultrafast')
+                t_s.close()
+                audio_clips.append(AudioFileClip(t_s.name).set_start(dq))
             
-            st.success(f"✅ Selesai! Klik tombol di bawah untuk simpan.")
+            video = video.set_audio(CompositeAudioClip(audio_clips).set_duration(total))
             
-            # ISI PLACEHOLDER DENGAN TOMBOL DOWNLOAD (DI ATAS VIDEO)
-            with open(out, "rb") as f:
+            # Overlay
+            q = create_text_clip_pil(selected_row['Pertanyaan'], f_path.name, 75, 1080, total).set_position(('center', 350))
+            a = create_text_clip_pil(f"A. {selected_row['Pilihan A']}", f_path.name, 65, 1080, total).set_position(('center', 850))
+            b = create_text_clip_pil(f"B. {selected_row['Pilihan B']}", f_path.name, 65, 1080, total).set_position(('center', 1100))
+            ans = create_text_clip_pil(f"Answer: {selected_row['Jawaban Benar']}", f_path.name, 85, 1080, da, True).set_start(dq).set_position(('center', 1350))
+            
+            final_video = CompositeVideoClip([video, q, a, b, ans])
+            
+            # PATH TETAP (Bukan Temp agar tidak terhapus)
+            render_out = os.path.join(OUTPUT_DIR, final_filename)
+            final_video.write_videofile(render_out, codec='libx264', audio_codec='aac', fps=24, preset='ultrafast')
+            
+            # BACA ULANG FILE UNTUK DOWNLOAD
+            with open(render_out, "rb") as f:
+                video_bytes = f.read() # Baca ke memory
                 download_placeholder.download_button(
-                    label=f"📥 DOWNLOAD SEKARANG: {final_filename}",
-                    data=f,
+                    label=f"📥 DOWNLOAD: {final_filename}",
+                    data=video_bytes,
                     file_name=final_filename,
                     mime="video/mp4",
                     use_container_width=True,
                     type="primary"
                 )
             
-            # Preview video tetap di bawah sebagai referensi
-            st.video(out)
+            st.success(f"✅ Selesai Render Soal {nomor_soal}!")
+            st.video(render_out)
